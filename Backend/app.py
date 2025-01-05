@@ -1,24 +1,48 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pathlib import Path
 from pydantic import BaseModel, EmailStr
 from enum import Enum
 from typing import List, Optional
 from datetime import datetime
 import uvicorn
+import multiprocessing
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from .database import get_async_db, engine, Base
+from . import models
+from .services.solicitud_service import SolicitudService
+from uuid import UUID
+from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
+from .auth.auth_service import AuthService
+from .auth.auth_dependencies import get_current_user
+from .database import get_async_db
+from .auth.auth_dependencies import get_current_user
+from .models import User
 
-app = FastAPI()
+# Creamos la aplicación FastAPI una sola vez
+app = FastAPI(title='Formulario de alta de nuevos clientes')
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins = ['http://localhost:3000'], # URL de la app frontend
-    allow_credentials = True,
-    allow_methods = ['*'],
-    allow_headers = ['*']
-)
+# Evento de inicio
+@app.on_event("startup")
+async def init_db():
+    """Inicialización de la base de datos"""
+    async with engine.begin() as conn:
+        await conn.run_async(models.Base.metadata.create_all)
 
-# Montamos los archivos estáticos del frontend
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# En desarrollo mantenemos CORS para trabajar con el servidor de desarrollo de React
+# En producción no será necesario ya que todo se sirve desde el mismo origen
+if app.debug:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=['http://localhost:3000'],
+        allow_credentials=True,
+        allow_methods=['*'],
+        allow_headers=['*']
+    )
 
 # Definición de enumeraciones fijas
 class TipoCarga(str, Enum):
@@ -43,7 +67,7 @@ class DatosComercial(BaseModel):
     sepa_documento: str
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "nombre": "Empresa Example SL",
                 "nombre_comercial": "Example",
@@ -70,58 +94,142 @@ class EstadoSolicitud(str, Enum):
 class SolicitudCliente(BaseModel):
     """Modelo principal que mantiene el estado de la solicitud"""
     id: str
+    datos_comercial: Optional[DatosComercial]  # Corregido el nombre del campo
     estado: EstadoSolicitud
     fecha_creacion: datetime
     ultima_modificacion: datetime
     aprobado_director: bool = False
     aprobado_pedidos: bool = False
     aprobado_admin: bool = False
-    notas: Optional[str]
-
-# Inicialización de la aplicación FastAPI
-app = FastAPI(title = 'Formulario de alta de nuevos clientes')
-
-# Almacenamiento temporal
-solicitudes_db = {}
+    notas: Optional[str] = None
 
 # Endpoints de la API
-@app.post('/solicitudes/', response_model = SolicitudCliente)
-async def crear_solicitud(datos: DatosComercial):
+# Modificar el endpoint de creación de solicitud para usar la base de datos
+@app.post('/api/solicitudes/', response_model=SolicitudCliente)
+async def crear_solicitud(datos: DatosComercial, db: AsyncSession = Depends(get_async_db)):
     """Crear una nueva solicitud por parte del comercial"""
-    solicitud_id = str(len(solicitudes_db) + 1) # En PROD usar UUID
-    nueva_solicitud = SolicitudCliente(
-        id = solicitud_id,
-        datos_comerecial = datos,
-        estado= EstadoSolicitud.PENDIENTE_DIRECTOR,
-        fecha_creacion = datetime.now(),
-        ultima_modificacion = datetime.now()
+    # Crear una nueva solicitud usando el modelo SQLAlchemy
+    nueva_solicitud = models.SolicitudCliente(
+        datos_comercial=datos.dict(),
+        estado=EstadoSolicitud.PENDIENTE_DIRECTOR,
+        notas=""
     )
-    solicitudes_db[solicitud_id] = nueva_solicitud
-    return nueva_solicitud
+    
+    # Añadir y guardar en la base de datos
+    db.add(nueva_solicitud)
+    await db.commit()
+    await db.refresh(nueva_solicitud)
+    
+    return nueva_solicitud  
 
-@app.get('/solicitudes/{solicitud_id}', response_model = SolicitudCliente)
-async def obtener_solicitud(solicitud_id: str):
+@app.get('/api/solicitudes/{solicitud_id}', response_model=SolicitudCliente)
+async def obtener_solicitud(solicitud_id: str, db: AsyncSession = Depends(get_async_db)):
     """Obtener el estado actual de una solicitud"""
-    if solicitud_id not in solicitudes_db:
-        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
-    return solicitudes_db[solicitud_id]
-
-@app.put('/solicitudes/{solicitud_id}/director')
-async def aprobar_director(solicitud_id: str, aprobar: bool = True):
-    """Aprobación del director comercial"""
-    if solicitud_id not in solicitudes_db:
+    # Buscar la solicitud en la base de datos
+    result = await db.execute(
+        select(models.SolicitudCliente).where(models.SolicitudCliente.id == solicitud_id)
+    )
+    solicitud = result.scalar_one_or_none()
+    
+    if not solicitud:
         raise HTTPException(status_code=404, detail="Solicitud no encontrada")
     
-    solicitud = solicitudes_db[solicitud_id]
+    return solicitud
+
+@app.put('/api/solicitudes/{solicitud_id}/director')
+async def aprobar_director(
+    solicitud_id: str, 
+    aprobar: bool = True, 
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Aprobación del director comercial"""
+    # Buscar la solicitud en la base de datos
+    result = await db.execute(
+        select(models.SolicitudCliente).where(models.SolicitudCliente.id == solicitud_id)
+    )
+    solicitud = result.scalar_one_or_none()
+    
+    if not solicitud:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    
+    # Actualizar los campos
     solicitud.aprobado_director = aprobar
     solicitud.ultima_modificacion = datetime.now()
-    
-    if aprobar:
-        solicitud.estado = EstadoSolicitud.PENDIENTE_PEDIDOS
-    else:
-        solicitud.estado = EstadoSolicitud.RECHAZADO
-    
-    return {"message": "Solicitud actualizada"}
+    solicitud.estado = (
+        EstadoSolicitud.PENDIENTE_PEDIDOS if aprobar 
+        else EstadoSolicitud.RECHAZADO
+    )
+
+    # Guardar los cambios
+    await db.commit()
+
+    return {'message': 'Solicitud actualizada'}
+
+@app.post('/api/solicitudes/{solicitud_id}/archivar')
+async def archivar_solicitud_endopoint(
+    solicitud_id: UUID,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Endopoint para archivar la solicitud completada
+    Solo accesible por el administrador.
+    """
+    servicio = SolicitudService(db)
+    solicitud_archivada = await servicio.archivar_solicitud(solicitud_id)
+    return {'message': 'Solicitud archivada correctamente'}
+
+@app.post("/token")
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Endpoint para iniciar sesión y obtener token JWT."""
+    auth_service = AuthService(db)
+    user, token = await auth_service.authenticate_user(
+        form_data.username,
+        form_data.password
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user_role": user.rol.value
+    }
+
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    """Endpoint protegido que requiere autenticación."""
+    return current_user
+
+# Ruta para servir el index.html de React
+@app.get("/")
+async def read_root():
+    """
+    Sirve el archivo index.html de la aplicación React
+    Esta ruta es necesaria para manejar el enrutamiento del lado del cliente
+    """
+    return FileResponse('static/index.html')
+
+# Configuración para servir archivos estáticos
+# Importante: El orden de estas rutas es importante para la app
+# Primero montamos los archivos estáticos específicos
+app.mount("/static", StaticFiles(directory="static"), name="static")
+# Luego montamos la raíz para manejar el enrutamiento de React
+app.mount("/", StaticFiles(directory="static", html=True), name="root")
 
 if __name__ == '__main__':
-    uvicorn.run(app, host = '0.0.0.0', port = 8000, debug = True)
+    # Creamos una configuración personalizada para uvicorn
+    # Esta configuración nos permite especificar todos los parámetros que necesitamos
+    # de una manera que funciona bien con la recarga automática
+    config = uvicorn.Config(
+        "app:app",          # Esta es la ruta de importación a la aplicación
+                           # "app:app" significa "del módulo app, importa la variable app"
+        host="0.0.0.0",    # Permite conexiones desde cualquier IP
+        port=8000,         # Puerto en el que se ejecutará el servidor
+        reload=True,       # Habilita la recarga automática cuando el código cambia
+        log_level="debug", # Muestra logs detallados para debugging
+        workers=1          # Número de procesos worker, 1 es suficiente para desarrollo
+    )
+    
+    # Creamos y ejecutamos el servidor con la configuración anterior
+    server = uvicorn.Server(config)
+    server.run()
