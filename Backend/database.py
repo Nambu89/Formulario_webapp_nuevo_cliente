@@ -30,6 +30,9 @@ engine = create_async_engine(
     future=True,
     pool_size=20, # Tamaño del pool de conexiones
     max_overflow=10, # Máximo número de conexiones adicionales
+    pool_timeout=30, # Tiempo máximo de espera para obtener una conexión
+    pool_recycle=1800, # Tiempo máximo de vida de una conexión
+    pool_pre_ping=True # Realizar un PING antes de obtener una conexión
 )
 
 # Configuramos la sesión asíncrona

@@ -1,3 +1,5 @@
+import sys
+print(sys.path)
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -31,11 +33,17 @@ async def lifespan(app: FastAPI):
     Manejador del ciclo de vida de la aplicación.
     Se ejecuta al iniciar y detener la aplicación.
     """
-    # Código que se ejecuta al iniciar
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
-    yield
+    try:
+        print("Inicializando la base de datos...")
+        async with engine.begin() as conn:
+            print("Creando tablas...")
+            await conn.run_sync(Base.metadata.create_all)
+            print("Tablas creadas correctamente.")
+        print("Base de datos inicializada correctamente.")
+        yield
+    except Exception as e:
+        print(f"Error durante la inicialización de la base de datos: {e}")
+        raise
 
 # Creamos la aplicación FastAPI una sola vez
 app = FastAPI(
