@@ -12,26 +12,36 @@ import uvicorn
 import multiprocessing
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from .database import get_async_db, engine, Base
-from . import models
-from .services.solicitud_service import SolicitudService
+from database import get_async_db, engine, Base
+import models
+from services.solicitud_service import SolicitudService
 from uuid import UUID
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
-from .auth.auth_service import AuthService
-from .auth.auth_dependencies import get_current_user
-from .database import get_async_db
-from .auth.auth_dependencies import get_current_user
-from .models import User
+from auth.auth_service import AuthService
+from auth.auth_dependencies import get_current_user
+from models import User
+from contextlib import asynccontextmanager
+
+# Obtén la ruta absoluta del directorio raíz del proyecto
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Manejador del ciclo de vida de la aplicación.
+    Se ejecuta al iniciar y detener la aplicación.
+    """
+    # Código que se ejecuta al iniciar
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    yield
 
 # Creamos la aplicación FastAPI una sola vez
-app = FastAPI(title='Formulario de alta de nuevos clientes')
-
-# Evento de inicio
-@app.on_event("startup")
-async def init_db():
-    """Inicialización de la base de datos"""
-    async with engine.begin() as conn:
-        await conn.run_async(models.Base.metadata.create_all)
+app = FastAPI(
+    title='Formulario de alta de nuevos clientes',
+    lifespan=lifespan
+)
 
 # En desarrollo mantenemos CORS para trabajar con el servidor de desarrollo de React
 # En producción no será necesario ya que todo se sirve desde el mismo origen
@@ -185,15 +195,13 @@ async def login(
 ):
     """Endpoint para iniciar sesión y obtener token JWT."""
     auth_service = AuthService(db)
-    user, token = await auth_service.authenticate_user(
+    auth_response = await auth_service.authenticate_user(
         form_data.username,
         form_data.password
     )
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user_role": user.rol.value
-    }
+    # No necesitamos modificar la respuesta porque auth_service ya 
+    # devuelve el formato correcto
+    return auth_response
 
 @app.get("/users/me")
 async def read_users_me(current_user: User = Depends(get_current_user)):
@@ -207,14 +215,24 @@ async def read_root():
     Sirve el archivo index.html de la aplicación React
     Esta ruta es necesaria para manejar el enrutamiento del lado del cliente
     """
-    return FileResponse('static/index.html')
+    return FileResponse(str(BASE_DIR / "static" / "index.html"))
 
 # Configuración para servir archivos estáticos
-# Importante: El orden de estas rutas es importante para la app
-# Primero montamos los archivos estáticos específicos
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# El orden de las rutas es crucial para el correcto funcionamiento
+# Primero montamos los archivos estáticos específicos usando una ruta absoluta
+app.mount(
+    "/static", 
+    StaticFiles(directory=str(BASE_DIR / "static")), # Apunta al directorio static en la raíz
+    name="static"
+)
+
 # Luego montamos la raíz para manejar el enrutamiento de React
-app.mount("/", StaticFiles(directory="static", html=True), name="root")
+# También usando la ruta absoluta
+app.mount(
+    "/", 
+    StaticFiles(directory=str(BASE_DIR / "static"), html=True), 
+    name="root"
+)
 
 if __name__ == '__main__':
     # Creamos una configuración personalizada para uvicorn

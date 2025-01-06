@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from datetime import datetime
-from ..models import Solicitud, SolicitudArchivada
+from models import Solicitud, SolicitudArchivada
 from fastapi import HTTPException
 
 class SolicitudService:

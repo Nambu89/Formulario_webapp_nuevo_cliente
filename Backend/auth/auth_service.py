@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from fastapi import HTTPException
-from ..models import User
-from .auth_handler import AuthHandler
+from models import User
+from auth.auth_handler import AuthHandler
 
 class AuthService:
     def __init__(self, db: AsyncSession):
@@ -19,7 +19,7 @@ class AuthService:
             password: Contraseña del usuario
             
         Returns:
-            tuple: (Usuario autenticado, Token de acceso)
+            dict: Diccionario con el token de acceso y la información del usuario
             
         Raises:
             HTTPException: Si las credenciales son inválidas
@@ -43,4 +43,11 @@ class AuthService:
             data={"sub": user.email, "rol": user.rol.value}
         )
 
-        return user, access_token
+        # Devolver respuesta estructurada
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user_role": user.rol.value,
+            "user_email": user.email,
+            "user_name": user.nombre_completo
+        }

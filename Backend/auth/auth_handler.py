@@ -19,7 +19,7 @@ class AuthHandler:
         """Genera un hash seguro para una contraseña."""
         return self.pwd_context.hash(password)
     
-    def create_acces_token(self, data:dict, expires_delta:Optional[timedelta]=None) -> str:
+    def create_access_token(self, data:dict, expires_delta:Optional[timedelta]=None) -> str:
         """
         Crea un token JWT con los datos proporcionados.
         
