@@ -1,58 +1,98 @@
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 import os
+import asyncio
+from contextlib import asynccontextmanager
+
 
 # Cargamos las variables de entorno
 load_dotenv()
 
-# Configuramos la URL de la base de datos para conexiones asíncronas
+# Añadimos verificaciones de las dependencias
+try:
+    import asyncpg
+    print("asyncpg está instalado correctamente")
+except ImportError:
+    print("ERROR: asyncpg no está instalado")
+
+try:
+    import psycopg2
+    print("psycopg2 está instalado correctamente")
+except ImportError:
+    print("ERROR: psycopg2 no está instalado")
+
+
+# Modificamos la URL para forzar el uso de asyncpg
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://postgres:Fer19891234@localhost:5432/svan_comerciales"
 )
 
-# Aseguramos que la URL use el driver correcto
-if not DATABASE_URL.startswith("postgresql+asyncpg://"):
-    # Si la URL comienza con postgresql://, la convertimos al formato correcto
-    if DATABASE_URL.startswith("postgresql://"):
-        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
-    else:
-        raise ValueError(
-            "La URL de la base de datos debe comenzar con 'postgresql://' o 'postgresql+asyncpg://'"
-        )
-
-# Creamos el motor asíncrono
+# Simplificamos la configuración inicial para diagnosticar problemas
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,
     future=True,
-    pool_size=20, # Tamaño del pool de conexiones
-    max_overflow=10, # Máximo número de conexiones adicionales
-    pool_timeout=30, # Tiempo máximo de espera para obtener una conexión
-    pool_recycle=1800, # Tiempo máximo de vida de una conexión
-    pool_pre_ping=True # Realizar un PING antes de obtener una conexión
+    # Removemos temporalmente las configuraciones adicionales para aislar el problema
 )
 
-# Configuramos la sesión asíncrona
+# Configuramos la sesión asíncrona con mejor manejo de recursos
 AsyncSessionLocal = sessionmaker(
-    engine,
+    bind=engine,
     class_=AsyncSession,
-    expire_on_commit=False
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False
 )
 
 # Base para los modelos
 Base = declarative_base()
 
-# Función asíncrona para obtener la sesión de la base de datos
+# Función mejorada para obtener la conexión a la base de datos
 async def get_async_db():
     """
-    Genera una sesión asíncrona de la base de datos.
-    Se usa como dependencia en FastAPI para manejar las conexiones.
+    Genera una sesión asíncrona de la base de datos con reintentos y mejor
+    manejo de errores.
     """
-    async with AsyncSessionLocal() as session:
+    retries = 3
+    retry_delay = 1  # Tiempo inicial de espera entre reintentos
+    session = None
+    
+    for attempt in range(retries):
         try:
+            session = AsyncSessionLocal()
+            await session.connection()  # Verificamos la conexión
             yield session
-        finally:
-            await session.close()
+            return
+        except Exception as e:
+            if session:
+                await session.close()
+            
+            if attempt == retries - 1:  # Último intento
+                raise Exception(f"No se pudo conectar a la base de datos después de {retries} intentos: {str(e)}")
+            
+            # Retraso exponencial entre reintentos
+            wait_time = retry_delay * (2 ** attempt)
+            print(f"Intento {attempt + 1} falló. Esperando {wait_time} segundos antes de reintentar...")
+            await asyncio.sleep(wait_time)
+    
+    if session:
+        await session.close()
+
+# Función de utilidad para verificar la conexión
+async def verify_database_connection():
+    """
+    Verifica que la conexión a la base de datos funciona correctamente.
+    Útil para diagnóstico durante el inicio de la aplicación.
+    """
+    try:
+        async with engine.connect() as conn:
+            await conn.execute("SELECT 1")
+            print("Conexión a la base de datos verificada exitosamente")
+        return True
+    except Exception as e:
+        print(f"Error al verificar la conexión a la base de datos: {str(e)}")
+        return False

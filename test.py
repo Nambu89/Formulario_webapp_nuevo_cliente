@@ -10,7 +10,7 @@ async def test_connection():
             host="localhost",
             port=5432
         )
-        print("Conexión exitosa!")
+        print("Conexión realizada con éxito!")
         await conn.close()
     except Exception as e:
         print(f"Error de conexión: {e}")

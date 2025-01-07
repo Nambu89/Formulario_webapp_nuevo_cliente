@@ -23,27 +23,24 @@ from auth.auth_service import AuthService
 from auth.auth_dependencies import get_current_user
 from models import User
 from contextlib import asynccontextmanager
+import asyncio
 
 # Obtén la ruta absoluta del directorio raíz del proyecto
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Manejador del ciclo de vida de la aplicación.
-    Se ejecuta al iniciar y detener la aplicación.
-    """
-    try:
-        print("Inicializando la base de datos...")
-        async with engine.begin() as conn:
-            print("Creando tablas...")
-            await conn.run_sync(Base.metadata.create_all)
-            print("Tablas creadas correctamente.")
-        print("Base de datos inicializada correctamente.")
-        yield
-    except Exception as e:
-        print(f"Error durante la inicialización de la base de datos: {e}")
-        raise
+    """Manejador del ciclo de vida de la aplicación."""
+    # Verificar la conexión a la base de datos al inicio
+    if not await verify_database_connection():
+        raise Exception("No se pudo establecer la conexión inicial con la base de datos")
+    
+    print("Inicialización de la aplicación completada")
+    yield
+    
+    # Limpieza al cerrar
+    await engine.dispose()
+    print("Recursos de la aplicación liberados correctamente")
 
 # Creamos la aplicación FastAPI una sola vez
 app = FastAPI(
