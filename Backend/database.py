@@ -1,98 +1,73 @@
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from dotenv import load_dotenv
 import os
 import asyncio
-from contextlib import asynccontextmanager
 
+# Al principio del archivo, después de los imports
+try:
+    import asyncpg
+    print("asyncpg está instalado correctamente")
+except ImportError as e:
+    print(f"ERROR: asyncpg no está instalado: {e}")
 
 # Cargamos las variables de entorno
 load_dotenv()
 
-# Añadimos verificaciones de las dependencias
-try:
-    import asyncpg
-    print("asyncpg está instalado correctamente")
-except ImportError:
-    print("ERROR: asyncpg no está instalado")
+# Imprimir la URL para diagnóstico
+DATABASE_URL = "postgresql+asyncpg://postgres:Fer19891234@localhost:5432/svan_comerciales"
+print(f"Usando URL de base de datos: {DATABASE_URL}")
 
-try:
-    import psycopg2
-    print("psycopg2 está instalado correctamente")
-except ImportError:
-    print("ERROR: psycopg2 no está instalado")
-
-
-# Modificamos la URL para forzar el uso de asyncpg
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://postgres:Fer19891234@localhost:5432/svan_comerciales"
-)
-
-# Simplificamos la configuración inicial para diagnosticar problemas
+# Configuración simplificada del engine
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,
-    future=True,
-    # Removemos temporalmente las configuraciones adicionales para aislar el problema
+    future=True
 )
 
-# Configuramos la sesión asíncrona con mejor manejo de recursos
+# Configuramos la sesión asíncrona
 AsyncSessionLocal = sessionmaker(
-    bind=engine,
+    engine,
     class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False
+    expire_on_commit=False
 )
 
 # Base para los modelos
 Base = declarative_base()
 
-# Función mejorada para obtener la conexión a la base de datos
-async def get_async_db():
-    """
-    Genera una sesión asíncrona de la base de datos con reintentos y mejor
-    manejo de errores.
-    """
-    retries = 3
-    retry_delay = 1  # Tiempo inicial de espera entre reintentos
-    session = None
-    
-    for attempt in range(retries):
-        try:
-            session = AsyncSessionLocal()
-            await session.connection()  # Verificamos la conexión
-            yield session
-            return
-        except Exception as e:
-            if session:
-                await session.close()
-            
-            if attempt == retries - 1:  # Último intento
-                raise Exception(f"No se pudo conectar a la base de datos después de {retries} intentos: {str(e)}")
-            
-            # Retraso exponencial entre reintentos
-            wait_time = retry_delay * (2 ** attempt)
-            print(f"Intento {attempt + 1} falló. Esperando {wait_time} segundos antes de reintentar...")
-            await asyncio.sleep(wait_time)
-    
-    if session:
-        await session.close()
-
-# Función de utilidad para verificar la conexión
+# Aquí va la función de verificación de conexión
 async def verify_database_connection():
     """
     Verifica que la conexión a la base de datos funciona correctamente.
-    Útil para diagnóstico durante el inicio de la aplicación.
+    Esta función intenta establecer una conexión y ejecutar una consulta simple
+    para asegurarse de que todo está funcionando como se espera.
+    
+    Returns:
+        bool: True si la conexión es exitosa, False en caso contrario
     """
     try:
-        async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+        async with engine.begin() as conn:
+            # Intentamos ejecutar una consulta simple
+            await conn.execute(text("SELECT 1"))
             print("Conexión a la base de datos verificada exitosamente")
-        return True
+            return True
     except Exception as e:
         print(f"Error al verificar la conexión a la base de datos: {str(e)}")
         return False
+
+# Función para obtener la sesión de base de datos
+async def get_async_db():
+    """Genera una sesión asíncrona de la base de datos con reintentos."""
+    retries = 3
+    for attempt in range(retries):
+        try:
+            async with AsyncSessionLocal() as session:
+                yield session
+        except Exception as e:
+            if attempt == retries - 1:
+                raise
+            await asyncio.sleep(1)
+        finally:
+            await session.close()

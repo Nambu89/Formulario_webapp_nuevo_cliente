@@ -2,19 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import NuevoCliente from './pages/NuevoCliente';
-
-// Componente para proteger rutas que requieren autenticación
-const ProtectedRoute = ({ children }) => {
-    // Verificamos si hay un token de autenticación
-    const token = localStorage.getItem('token');
-    
-    if (!token) {
-        // Si no hay token, redirigimos al login
-        return <Navigate to="/login" replace />;
-    }
-    
-    return children;
-};
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 function App() {
     return (

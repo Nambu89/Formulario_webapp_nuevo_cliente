@@ -1,8 +1,7 @@
-// src/pages/NuevoCliente.jsx
 import React from 'react';
 import ClienteForm from '../components/ClienteForm';
-import { useAuth } from '../contexts/AuthContext'; // Lo implementaremos después
-import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '../context/AuthContext';
+import { Card, CardHeader, CardTitle } from '../components/ui/card';
 
 const NuevoCliente = () => {
     const { user, role } = useAuth();

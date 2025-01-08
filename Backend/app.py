@@ -14,7 +14,7 @@ import uvicorn
 import multiprocessing
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from database import get_async_db, engine, Base
+from database import get_async_db, engine, Base, verify_database_connection
 import models
 from services.solicitud_service import SolicitudService
 from uuid import UUID

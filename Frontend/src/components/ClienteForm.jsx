@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { FileUpload } from 'lucide-react';
-
+import React, { useState } from 'react'; // Añade useState aquí
+import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select } from './ui/select';
+import { Alert, AlertDescription } from './ui/alert';
+import { Upload } from 'lucide-react';
 const ClienteWorkflow = () => {
   // Estados para los diferentes pasos del formulario
   const [currentStep, setCurrentStep] = useState(1);
@@ -101,19 +100,16 @@ const ClienteWorkflow = () => {
                 <div className="space-y-2">
                   <Label htmlFor="tipoCarga">Tipo de Carga</Label>
                   <Select 
-                    onValueChange={(value) => handleChange('tipoCarga', value)}
+                    id="tipoCarga"
                     value={formData.tipoCarga}
+                    onChange={(e) => handleChange('tipoCarga', e.target.value)}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccione tipo de carga" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="COMP">COMP</SelectItem>
-                      <SelectItem value="CROSS">CROSS</SelectItem>
-                      <SelectItem value="EXW">EXW</SelectItem>
-                      <SelectItem value="GRUP">GRUP</SelectItem>
-                      <SelectItem value="TTPRO">TTPRO</SelectItem>
-                    </SelectContent>
+                    <option value="">Seleccione tipo de carga</option>
+                    <option value="COMP">COMP</option>
+                    <option value="CROSS">CROSS</option>
+                    <option value="EXW">EXW</option>
+                    <option value="GRUP">GRUP</option>
+                    <option value="TTPRO">TTPRO</option>
                   </Select>
                 </div>
 
@@ -128,7 +124,7 @@ const ClienteWorkflow = () => {
                     variant="outline"
                     onClick={() => document.getElementById('sepa-upload').click()}
                   >
-                    <FileUpload className="mr-2 h-4 w-4" />
+                    <Upload className="mr-2 h-4 w-4" />
                     Subir documento SEPA
                   </Button>
                   <input

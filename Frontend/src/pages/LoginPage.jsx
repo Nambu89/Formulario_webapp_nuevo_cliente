@@ -1,61 +1,44 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+const API_URL = 'http://localhost:8000'; // Añadida URL base del backend
 
 const LoginPage = () => {
-    // Estados para manejar el formulario
+    const { login } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    
-    // Hook para navegación
     const navigate = useNavigate();
 
-    // Función para manejar el inicio de sesión
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setIsLoading(true);
 
         try {
-            // Llamada a la API para autenticar
-            const response = await fetch('/token', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: new URLSearchParams({
-                    'username': email,
-                    'password': password,
-                }),
-            });
+            const response = await login(email, password);
+            if (!response) {
+                throw new Error('No se recibió respuesta del servidor');
+            }
 
-            if (response.ok) {
-                const data = await response.json();
-                
-                // Guardamos el token y rol en localStorage
-                localStorage.setItem('token', data.access_token);
-                localStorage.setItem('user_role', data.user_role);
-
-                // Redirigimos según el rol del usuario
-                switch (data.user_role) {
-                    case 'comercial':
-                        navigate('/nuevo-cliente');
-                        break;
-                    case 'director':
-                        navigate('/revision-solicitudes');
-                        break;
-                    case 'admin':
-                        navigate('/dashboard');
-                        break;
-                    default:
-                        navigate('/home');
-                }
-            } else {
-                const errorData = await response.json();
-                setError(errorData.detail || 'Error al iniciar sesión');
+            // Redirigimos según el rol del usuario
+            switch (response.user_role) {
+                case 'comercial':
+                    navigate('/nuevo-cliente');
+                    break;
+                case 'director':
+                    navigate('/revision-solicitudes');
+                    break;
+                case 'admin':
+                    navigate('/dashboard');
+                    break;
+                default:
+                    navigate('/home');
             }
         } catch (err) {
+            console.error('Error durante el login:', err);
             setError('Error de conexión con el servidor');
         } finally {
             setIsLoading(false);
