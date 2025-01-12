@@ -3,23 +3,30 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException
+import logging
+
+# Configuración básica de logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 class AuthHandler:
     def __init__(self):
-        self.secret_key = 'tu_clave_secreta' # En producción, cambiar a variables de entorno
+        self.secret_key = 'tu_clave_secreta'  # En producción, cambiar a variables de entorno
         self.algorithm = 'HS256'
         self.access_token_expire_minutes = 30
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verifica si una contraseña coincide con su hash."""
+        logger.debug(f"Verificando contraseña: {plain_password} vs {hashed_password}")
         return self.pwd_context.verify(plain_password, hashed_password)
     
-    def get_password_hash(self, password:str) -> str:
+    def get_password_hash(self, password: str) -> str:
         """Genera un hash seguro para una contraseña."""
+        logger.debug(f"Generando hash para la contraseña: {password}")
         return self.pwd_context.hash(password)
     
-    def create_access_token(self, data:dict, expires_delta:Optional[timedelta]=None) -> str:
+    def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None) -> str:
         """
         Crea un token JWT con los datos proporcionados.
         
@@ -30,12 +37,13 @@ class AuthHandler:
         Returns:
             str: Token JWT codificado
         """
+        logger.debug(f"Creando token JWT para los datos: {data}")
         to_encode = data.copy()
-        expire = datetime.utcnow() + (expires_delta or timedelta(minutes = self.access_token_expire_minutes))
+        expire = datetime.utcnow() + (expires_delta or timedelta(minutes=self.access_token_expire_minutes))
         to_encode.update({"exp": expire})
-        return jwt.encode(to_encode, self.secret_key, algorithm = self.algorithm)
+        return jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
     
-    def decode_token(self, token:str) -> dict:
+    def decode_token(self, token: str) -> dict:
         """
         Decodifica y verifica un token JWT.
         
@@ -48,12 +56,13 @@ class AuthHandler:
         Raises:
             HTTPException: Si el token es inválido o ha expirado
         """
+        logger.debug(f"Decodificando token: {token}")
         try:
             return jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-        except JWTError:
+        except JWTError as e:
+            logger.error(f"Error al decodificar el token: {e}")
             raise HTTPException(
                 status_code=401, 
                 detail="Token inválido",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-
