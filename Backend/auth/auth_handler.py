@@ -4,65 +4,84 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException
 import logging
+import os
 
-# Configuración básica de logging
+# Configuración del logger
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class AuthHandler:
     def __init__(self):
-        self.secret_key = 'tu_clave_secreta'  # En producción, cambiar a variables de entorno
+        # En producción, usar variables de entorno
+        self.secret_key = os.getenv('JWT_SECRET_KEY', 'tu_clave_secreta_muy_segura_y_larga')
         self.algorithm = 'HS256'
         self.access_token_expire_minutes = 30
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        self.pwd_context = CryptContext(
+            schemes=["bcrypt"],
+            deprecated="auto",
+            bcrypt__rounds=12
+        )
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verifica si una contraseña coincide con su hash."""
-        logger.debug(f"Verificando contraseña: {plain_password} vs {hashed_password}")
-        return self.pwd_context.verify(plain_password, hashed_password)
+        try:
+            logger.debug("Iniciando verificación de contraseña")
+            logger.debug(f"Longitud de contraseña plana: {len(plain_password)}")
+            logger.debug(f"Longitud de hash: {len(hashed_password)}")
+            
+            result = self.pwd_context.verify(plain_password, hashed_password)
+            logger.debug(f"Resultado de verificación: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Error en verify_password: {str(e)}")
+            return False
     
     def get_password_hash(self, password: str) -> str:
         """Genera un hash seguro para una contraseña."""
-        logger.debug(f"Generando hash para la contraseña: {password}")
-        return self.pwd_context.hash(password)
+        try:
+            logger.debug("Generando hash para contraseña")
+            hashed = self.pwd_context.hash(password)
+            logger.debug(f"Hash generado exitosamente. Longitud: {len(hashed)}")
+            return hashed
+        except Exception as e:
+            logger.error(f"Error al generar hash: {str(e)}")
+            raise
     
     def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None) -> str:
-        """
-        Crea un token JWT con los datos proporcionados.
-        
-        Args:
-            data: Diccionario con los datos a codificar en el token
-            expires_delta: Tiempo opcional de expiración del token
-            
-        Returns:
-            str: Token JWT codificado
-        """
-        logger.debug(f"Creando token JWT para los datos: {data}")
-        to_encode = data.copy()
-        expire = datetime.utcnow() + (expires_delta or timedelta(minutes=self.access_token_expire_minutes))
-        to_encode.update({"exp": expire})
-        return jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
+        """Crea un token JWT."""
+        try:
+            logger.debug(f"Creando token JWT para los datos: {data}")
+            to_encode = data.copy()
+            expire = datetime.utcnow() + (
+                expires_delta or timedelta(minutes=self.access_token_expire_minutes)
+            )
+            to_encode.update({"exp": expire})
+            encoded_jwt = jwt.encode(
+                to_encode,
+                self.secret_key,
+                algorithm=self.algorithm
+            )
+            logger.debug("Token JWT creado exitosamente")
+            return encoded_jwt
+        except Exception as e:
+            logger.error(f"Error al crear token JWT: {str(e)}")
+            raise
     
     def decode_token(self, token: str) -> dict:
-        """
-        Decodifica y verifica un token JWT.
-        
-        Args:
-            token: Token JWT a decodificar
-            
-        Returns:
-            dict: Datos decodificados del token
-            
-        Raises:
-            HTTPException: Si el token es inválido o ha expirado
-        """
-        logger.debug(f"Decodificando token: {token}")
+        """Decodifica y verifica un token JWT."""
         try:
-            return jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            logger.debug("Intentando decodificar token JWT")
+            payload = jwt.decode(
+                token,
+                self.secret_key,
+                algorithms=[self.algorithm]
+            )
+            logger.debug("Token JWT decodificado exitosamente")
+            return payload
         except JWTError as e:
-            logger.error(f"Error al decodificar el token: {e}")
+            logger.error(f"Error al decodificar token JWT: {str(e)}")
             raise HTTPException(
-                status_code=401, 
+                status_code=401,
                 detail="Token inválido",
                 headers={"WWW-Authenticate": "Bearer"},
             )

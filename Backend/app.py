@@ -52,12 +52,12 @@ app = FastAPI(
 # En producción no será necesario ya que todo se sirve desde el mismo origen
 if app.debug:
     app.add_middleware(
-        CORSMiddleware,
-        allow_origins=['http://localhost:3000'],
-        allow_credentials=True,
-        allow_methods=['*'],
-        allow_headers=['*']
-    )
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # URL del frontend
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Definición de enumeraciones fijas
 class TipoCarga(str, Enum):

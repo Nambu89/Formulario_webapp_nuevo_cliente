@@ -5,29 +5,36 @@ from sqlalchemy import text
 from dotenv import load_dotenv
 import os
 import asyncio
+import logging
 
-# Al principio del archivo, después de los imports
+# Configuración del logger
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Verificar instalación de asyncpg
 try:
     import asyncpg
-    print("asyncpg está instalado correctamente")
+    logger.info("asyncpg está instalado correctamente")
 except ImportError as e:
-    print(f"ERROR: asyncpg no está instalado: {e}")
+    logger.error(f"ERROR: asyncpg no está instalado: {e}")
 
 # Cargamos las variables de entorno
 load_dotenv()
 
-# Imprimir la URL para diagnóstico
+# URL de la base de datos
 DATABASE_URL = "postgresql+asyncpg://postgres:Fer19891234@localhost:5432/svan_comerciales"
-print(f"Usando URL de base de datos: {DATABASE_URL}")
+logger.info(f"Usando URL de base de datos: {DATABASE_URL}")
 
-# Configuración simplificada del engine
+# Configuración del engine
 engine = create_async_engine(
     DATABASE_URL,
     echo=True,
-    future=True
+    future=True,
+    pool_size=5,
+    max_overflow=10
 )
 
-# Configuramos la sesión asíncrona
+# Configuración de la sesión asíncrona
 AsyncSessionLocal = sessionmaker(
     engine,
     class_=AsyncSession,
@@ -37,37 +44,56 @@ AsyncSessionLocal = sessionmaker(
 # Base para los modelos
 Base = declarative_base()
 
-# Aquí va la función de verificación de conexión
 async def verify_database_connection():
-    """
-    Verifica que la conexión a la base de datos funciona correctamente.
-    Esta función intenta establecer una conexión y ejecutar una consulta simple
-    para asegurarse de que todo está funcionando como se espera.
-    
-    Returns:
-        bool: True si la conexión es exitosa, False en caso contrario
-    """
+    """Verifica la conexión a la base de datos."""
     try:
         async with engine.begin() as conn:
-            # Intentamos ejecutar una consulta simple
             await conn.execute(text("SELECT 1"))
-            print("Conexión a la base de datos verificada exitosamente")
+            logger.info("Conexión a la base de datos verificada exitosamente")
             return True
     except Exception as e:
-        print(f"Error al verificar la conexión a la base de datos: {str(e)}")
+        logger.error(f"Error al verificar la conexión a la base de datos: {str(e)}")
         return False
 
-# Función para obtener la sesión de base de datos
 async def get_async_db():
-    """Genera una sesión asíncrona de la base de datos con reintentos."""
-    retries = 3
-    for attempt in range(retries):
-        try:
-            async with AsyncSessionLocal() as session:
-                yield session
-        except Exception as e:
-            if attempt == retries - 1:
-                raise
-            await asyncio.sleep(1)
-        finally:
-            await session.close()
+    """Genera una sesión asíncrona de la base de datos."""
+    session = AsyncSessionLocal()
+    try:
+        yield session
+    finally:
+        await session.close()
+
+# Función para inicializar la base de datos con datos de prueba
+async def init_db():
+    """Inicializa la base de datos con datos de prueba."""
+    try:
+        async with engine.begin() as conn:
+            # Crear todas las tablas
+            await conn.run_sync(Base.metadata.create_all)
+            
+        # Crear una sesión para insertar datos
+        async with AsyncSessionLocal() as session:
+            from models import User, UserRole
+            from auth.auth_handler import AuthHandler
+
+            # Verificar si ya existe el usuario admin
+            result = await session.execute(
+                text("SELECT 1 FROM usuarios WHERE email = 'fernando.prada@svanelectro.com'")
+            )
+            if not result.scalar():
+                # Crear usuario admin si no existe
+                auth_handler = AuthHandler()
+                admin_user = User(
+                    email='fernando.prada@svanelectro.com',
+                    password_hash=auth_handler.get_password_hash('contraseña_prueba'),
+                    nombre_completo='Fernando Prada',
+                    rol=UserRole.admin
+                )
+                session.add(admin_user)
+                await session.commit()
+                logger.info("Usuario admin creado correctamente")
+            
+        logger.info("Base de datos inicializada correctamente")
+    except Exception as e:
+        logger.error(f"Error al inicializar la base de datos: {str(e)}")
+        raise

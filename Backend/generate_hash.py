@@ -1,6 +1,12 @@
 import bcrypt
 
-password = "contraseña_prueba"  # Cambia esto por la contraseña que deseas hashear
-salt = bcrypt.gensalt()
-hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-print(f"Hash generado: {hashed.decode('utf-8')}")
+def generate_test_hash():
+    password = "contraseña_prueba"  # La contraseña que usarás para pruebas
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+if __name__ == "__main__":
+    hash_generado = generate_test_hash()
+    print(f"Contraseña de prueba: contraseña_prueba")
+    print(f"Hash generado: {hash_generado}")
