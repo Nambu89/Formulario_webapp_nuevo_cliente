@@ -1,4 +1,5 @@
-import React, { useState } from 'react'; // Añade useState aquí
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -6,9 +7,13 @@ import { Label } from './ui/label';
 import { Select } from './ui/select';
 import { Alert, AlertDescription } from './ui/alert';
 import { Upload } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+
 const ClienteWorkflow = () => {
-  // Estados para los diferentes pasos del formulario
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     // Datos del comercial
     nombre: '',
@@ -33,10 +38,8 @@ const ClienteWorkflow = () => {
     tipoDescarga: ''
   });
 
-  // Estado para validación
   const [errors, setErrors] = useState({});
 
-  // Función para validar el formulario del comercial
   const validateComercialForm = () => {
     const newErrors = {};
     const requiredFields = [
@@ -58,20 +61,81 @@ const ClienteWorkflow = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Manejador para el cambio de campos
   const handleChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+    // Limpiar error del campo cuando se modifica
+    if (errors[field]) {
+      setErrors(prev => ({
+        ...prev,
+        [field]: null
+      }));
+    }
   };
 
-  // Manejador para el siguiente paso
-  const handleNext = () => {
-    if (currentStep === 1 && !validateComercialForm()) {
+  const handleSubmit = async () => {
+    if (!validateComercialForm()) {
       return;
     }
-    setCurrentStep(prev => prev + 1);
+
+    setIsSubmitting(true);
+    try {
+      // Primero, subimos el documento SEPA si existe
+      let sepaUrl = null;
+      if (formData.sepaDocumento) {
+        const formDataFile = new FormData();
+        formDataFile.append('file', formData.sepaDocumento);
+        const fileResponse = await fetch('http://localhost:8000/api/upload/sepa', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: formDataFile
+        });
+        if (!fileResponse.ok) throw new Error('Error al subir el documento SEPA');
+        const fileData = await fileResponse.json();
+        sepaUrl = fileData.url;
+      }
+
+      // Luego, enviamos los datos del formulario
+      const response = await fetch('http://localhost:8000/api/solicitudes/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          ...formData,
+          sepaDocumento: sepaUrl
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al crear la solicitud');
+      }
+
+      // Si todo sale bien, navegamos a la página de solicitudes
+      navigate('/mis-solicitudes');
+    } catch (error) {
+      setErrors(prev => ({
+        ...prev,
+        submit: error.message
+      }));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentStep === 1) {
+      if (validateComercialForm()) {
+        handleSubmit();
+      }
+    } else {
+      setCurrentStep(prev => prev + 1);
+    }
   };
 
   return (
@@ -81,9 +145,16 @@ const ClienteWorkflow = () => {
           <CardTitle>Alta de Nuevo Cliente - Paso {currentStep} de 4</CardTitle>
         </CardHeader>
         <CardContent>
+          {errors.submit && (
+            <Alert className="mb-4" variant="destructive">
+              <AlertDescription>{errors.submit}</AlertDescription>
+            </Alert>
+          )}
+
           {currentStep === 1 && (
-            <form className="space-y-4">
+            <form className="space-y-4" onSubmit={e => e.preventDefault()}>
               <div className="grid grid-cols-2 gap-4">
+                {/* Los campos que ya tenías */}
                 <div className="space-y-2">
                   <Label htmlFor="nombre">Nombre</Label>
                   <Input
@@ -113,7 +184,7 @@ const ClienteWorkflow = () => {
                   </Select>
                 </div>
 
-                {/* Resto de campos del comercial */}
+                {/* Resto de campos */}
               </div>
 
               <div className="mt-4">
@@ -133,26 +204,24 @@ const ClienteWorkflow = () => {
                     className="hidden"
                     onChange={(e) => handleChange('sepaDocumento', e.target.files[0])}
                   />
+                  {formData.sepaDocumento && (
+                    <p className="mt-2 text-sm text-gray-600">
+                      Archivo seleccionado: {formData.sepaDocumento.name}
+                    </p>
+                  )}
                 </div>
               </div>
             </form>
           )}
 
-          {currentStep === 2 && (
-            <Alert>
-              <AlertDescription>
-                Esperando validación del Director Comercial
-              </AlertDescription>
-            </Alert>
-          )}
-
           {/* Botones de navegación */}
           <div className="mt-6 flex justify-end space-x-4">
-            {currentStep < 4 && (
-              <Button onClick={handleNext}>
-                Siguiente
-              </Button>
-            )}
+            <Button
+              onClick={handleNext}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Enviando...' : 'Enviar Solicitud'}
+            </Button>
           </div>
         </CardContent>
       </Card>

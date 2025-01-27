@@ -40,23 +40,16 @@ class Solicitud(Base):
     __tablename__ = "solicitudes"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    # Relación con el comercial que creó la solicitud
     comercial_id = Column(UUID(as_uuid=True), ForeignKey('usuarios.id'), nullable=False)
     comercial = relationship("User", back_populates="solicitudes")
     
-    # Datos del cliente almacenados como JSON
     datos_cliente = Column(JSONB, nullable=False)
-    
-    # Estado y aprobaciones
     estado = Column(Enum(EstadoSolicitud), nullable=False)
     aprobado_director = Column(Boolean, default=False)
     aprobado_pedidos = Column(Boolean, default=False)
     aprobado_admin = Column(Boolean, default=False)
-    
-    # Campo para notas de cada departamento
     notas = Column(JSONB, default={})
     
-    # Campos de auditoría
     creado_en = Column(DateTime(timezone=True), default=datetime.utcnow)
     actualizado_en = Column(DateTime(timezone=True), onupdate=datetime.utcnow)
 

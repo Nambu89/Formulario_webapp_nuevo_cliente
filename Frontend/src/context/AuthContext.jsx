@@ -1,12 +1,9 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
-// Constante de inicio del archivo
 const API_URL = 'http://localhost:8000';
 
-// Crear el contexto
 const AuthContext = createContext(null);
 
-// Hook personalizado para usar el contexto
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {
@@ -15,10 +12,8 @@ export const useAuth = () => {
     return context;
 };
 
-// Proveedor del contexto
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(() => {
-        // Intentar recuperar el usuario del localStorage al iniciar
         const savedUser = localStorage.getItem('user');
         return savedUser ? JSON.parse(savedUser) : null;
     });
@@ -30,24 +25,28 @@ export const AuthProvider = ({ children }) => {
         setIsLoading(true);
         setError(null);
         try {
+            console.log('Intentando login con:', email);
             const response = await fetch(`${API_URL}/token`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json'
                 },
+                credentials: 'include',
                 body: new URLSearchParams({
-                    'username': email,
-                    'password': password,
-                }),
+                    username: email,
+                    password: password,
+                }).toString()
             });
-    
-            if (!response.ok) {
-                throw new Error('Credenciales inválidas');
-            }
-    
+
             const data = await response.json();
             
-            // Guardar el token y la información del usuario
+            if (!response.ok) {
+                throw new Error(data.detail || 'Error en la autenticación');
+            }
+
+            console.log('Respuesta del servidor:', data);
+
             localStorage.setItem('token', data.access_token);
             const userData = {
                 email,
@@ -59,6 +58,7 @@ export const AuthProvider = ({ children }) => {
 
             return data;
         } catch (err) {
+            console.error('Error detallado:', err);
             setError(err.message);
             throw err;
         } finally {

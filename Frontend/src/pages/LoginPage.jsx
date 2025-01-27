@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const API_URL = 'http://localhost:8000'; // Añadida URL base del backend
-
 const LoginPage = () => {
     const { login } = useAuth();
     const [email, setEmail] = useState('');
@@ -12,38 +10,44 @@ const LoginPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError('');
-        setIsLoading(true);
-
-        try {
-            const response = await login(email, password);
-            if (!response) {
-                throw new Error('No se recibió respuesta del servidor');
-            }
-
-            // Redirigimos según el rol del usuario
-            switch (response.user_role) {
-                case 'comercial':
-                    navigate('/nuevo-cliente');
-                    break;
-                case 'director':
-                    navigate('/revision-solicitudes');
-                    break;
-                case 'admin':
+        const handleSubmit = async (e) => {
+            e.preventDefault();
+            setError('');
+            setIsLoading(true);
+    
+            try {
+                console.log('Iniciando login...');
+                const response = await login(email, password);
+                console.log('Respuesta login:', response);
+    
+                if (response && response.user_role) {
+                    // Primero redirigimos al dashboard
                     navigate('/dashboard');
-                    break;
-                default:
-                    navigate('/home');
+                    
+                    // Después, basado en el rol, podemos mostrar diferentes opciones en el perfil
+                    switch (response.user_role) {
+                        case 'comercial':
+                            localStorage.setItem('defaultRoute', '/nuevo-cliente');
+                            break;
+                        case 'director':
+                            localStorage.setItem('defaultRoute', '/revision-solicitudes');
+                            break;
+                        case 'admin':
+                            localStorage.setItem('defaultRoute', '/dashboard');
+                            break;
+                        default:
+                            localStorage.setItem('defaultRoute', '/home');
+                    }
+                } else {
+                    throw new Error('Respuesta inválida del servidor');
+                }
+            } catch (err) {
+                console.error('Error durante el login:', err);
+                setError(err.message || 'Error de conexión con el servidor');
+            } finally {
+                setIsLoading(false);
             }
-        } catch (err) {
-            console.error('Error durante el login:', err);
-            setError('Error de conexión con el servidor');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+        };
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
