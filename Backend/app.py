@@ -14,14 +14,14 @@ import uuid
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from database import get_async_db, engine, Base, verify_database_connection
+from database import get_async_db, engine, Base, verify_database_connection, init_db
 import models
 from services.solicitud_service import SolicitudService
 from uuid import UUID
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from auth.auth_service import AuthService
 from auth.auth_dependencies import get_current_user
-from models import User
+from models import User, EstadoSolicitud
 from contextlib import asynccontextmanager
 import asyncio
 
@@ -40,6 +40,9 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 async def lifespan(app: FastAPI):
     """Manejador del ciclo de vida de la aplicación."""
     try:
+        # Inicializar la base de datos al inicio
+        await init_db()
+        
         if not await verify_database_connection():
             raise Exception("No se pudo establecer la conexión inicial con la base de datos")
         
@@ -102,13 +105,6 @@ class DatosComercial(BaseModel):
             }
         }
 
-class EstadoSolicitud(str, Enum):
-    PENDIENTE_DIRECTOR = 'pendiente_director'
-    PENDIENTE_PEDIDOS = 'pendiente_pedidos'
-    PENDIENTE_ADMIN = 'pendiente_admin'
-    COMPLETADO = 'completado'
-    RECHAZADO = 'rechazado'
-
 class SolicitudCliente(BaseModel):
     id: str
     datos_comercial: Optional[DatosComercial]
@@ -120,43 +116,7 @@ class SolicitudCliente(BaseModel):
     aprobado_admin: bool = False
     notas: Optional[Dict[str, Any]] = None
 
-# Endpoints
-@app.post('/api/upload/sepa')
-async def upload_sepa(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
-):
-    """Endpoint para subir documentos SEPA"""
-    try:
-        file_extension = file.filename.split('.')[-1].lower()
-        if file_extension not in ['pdf', 'doc', 'docx']:
-            raise HTTPException(
-                status_code=400,
-                detail="Tipo de archivo no permitido. Solo se permiten PDF y documentos Word."
-            )
-
-        file_name = f"{uuid.uuid4()}.{file_extension}"
-        file_path = UPLOAD_DIR / file_name
-        
-        content = await file.read()
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
-        
-        file_url = f"/uploads/sepa/{file_name}"
-        
-        return {
-            "url": file_url,
-            "filename": file.filename
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error al subir archivo SEPA: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Error al procesar el archivo"
-        )
-
+# Endpoints para solicitudes
 @app.post('/api/solicitudes/')
 async def crear_solicitud(
     datos: DatosComercial,
@@ -199,6 +159,60 @@ async def crear_solicitud(
             detail="Error al crear la solicitud"
         )
 
+@app.get('/api/solicitudes/pendientes/{rol}')
+async def obtener_solicitudes_pendientes_por_rol(
+    rol: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Obtener solicitudes pendientes según el rol"""
+    try:
+        if current_user.rol != rol:
+            raise HTTPException(
+                status_code=403,
+                detail="No tiene permisos para ver estas solicitudes"
+            )
+
+        estado_buscar = None
+        if rol == "director":
+            estado_buscar = EstadoSolicitud.PENDIENTE_DIRECTOR
+        elif rol == "pedidos":
+            estado_buscar = EstadoSolicitud.PENDIENTE_PEDIDOS
+        elif rol == "admin":
+            estado_buscar = EstadoSolicitud.PENDIENTE_ADMIN
+        else:
+            raise HTTPException(status_code=400, detail="Rol no válido")
+
+        result = await db.execute(
+            select(models.Solicitud)
+            .where(models.Solicitud.estado == estado_buscar)
+            .order_by(models.Solicitud.creado_en.desc())
+        )
+        solicitudes = result.scalars().all()
+        
+        return [
+            {
+                "id": str(solicitud.id),
+                "datos_comercial": solicitud.datos_cliente,
+                "estado": solicitud.estado,
+                "fecha_creacion": solicitud.creado_en,
+                "ultima_modificacion": solicitud.actualizado_en,
+                "aprobado_director": solicitud.aprobado_director,
+                "aprobado_pedidos": solicitud.aprobado_pedidos,
+                "aprobado_admin": solicitud.aprobado_admin,
+                "notas": solicitud.notas
+            }
+            for solicitud in solicitudes
+        ]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error al obtener solicitudes: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error al obtener las solicitudes"
+        )
+
 @app.get('/api/solicitudes/usuario/{email}')
 async def obtener_solicitudes_usuario(
     email: str,
@@ -235,51 +249,156 @@ async def obtener_solicitudes_usuario(
             detail="Error al obtener las solicitudes"
         )
 
-@app.get('/api/solicitudes/{solicitud_id}')
-async def obtener_solicitud(
+@app.put('/api/solicitudes/{solicitud_id}/aprobar')
+async def aprobar_solicitud(
     solicitud_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db)
-):
-    """Obtener una solicitud específica"""
-    result = await db.execute(
-        select(models.Solicitud).where(models.Solicitud.id == solicitud_id)
-    )
-    solicitud = result.scalar_one_or_none()
-    
-    if not solicitud:
-        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
-    
-    return solicitud
-
-@app.put('/api/solicitudes/{solicitud_id}/estado')
-async def actualizar_estado_solicitud(
-    solicitud_id: str,
-    estado: EstadoSolicitud,
+    aprobar: bool,
     notas: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Actualizar el estado de una solicitud"""
-    result = await db.execute(
-        select(models.Solicitud).where(models.Solicitud.id == solicitud_id)
-    )
-    solicitud = result.scalar_one_or_none()
-    
-    if not solicitud:
-        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
-    
-    solicitud.estado = estado
-    if notas:
-        solicitud.notas = {
-            **solicitud.notas,
-            current_user.rol: notas
-        }
-    solicitud.ultima_modificacion = datetime.utcnow()
-    
-    await db.commit()
-    return {"message": "Estado actualizado correctamente"}
+    """Aprobar o rechazar una solicitud"""
+    try:
+        result = await db.execute(
+            select(models.Solicitud).where(models.Solicitud.id == solicitud_id)
+        )
+        solicitud = result.scalar_one_or_none()
 
+        if not solicitud:
+            raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+
+        # Actualizar estado según el rol y la decisión
+        if current_user.rol == "director":
+            solicitud.aprobado_director = aprobar
+            solicitud.estado = (
+                EstadoSolicitud.PENDIENTE_PEDIDOS if aprobar 
+                else EstadoSolicitud.RECHAZADO
+            )
+        elif current_user.rol == "pedidos":
+            if not solicitud.aprobado_director:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La solicitud debe ser aprobada primero por el director"
+                )
+            solicitud.aprobado_pedidos = aprobar
+            solicitud.estado = (
+                EstadoSolicitud.PENDIENTE_ADMIN if aprobar 
+                else EstadoSolicitud.RECHAZADO
+            )
+        elif current_user.rol == "admin":
+            if not (solicitud.aprobado_director and solicitud.aprobado_pedidos):
+                raise HTTPException(
+                    status_code=400,
+                    detail="La solicitud debe ser aprobada por director y pedidos primero"
+                )
+            solicitud.aprobado_admin = aprobar
+            solicitud.estado = (
+                EstadoSolicitud.COMPLETADO if aprobar 
+                else EstadoSolicitud.RECHAZADO
+            )
+        else:
+            raise HTTPException(
+                status_code=403,
+                detail="No tiene permisos para aprobar solicitudes"
+            )
+
+        # Actualizar notas y fecha
+        if notas:
+            solicitud.notas = {
+                **solicitud.notas,
+                current_user.rol: notas
+            }
+        solicitud.ultima_modificacion = datetime.utcnow()
+
+        await db.commit()
+        
+        return {
+            "message": "Solicitud actualizada correctamente",
+            "estado": solicitud.estado
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error al aprobar/rechazar solicitud: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error al procesar la solicitud"
+        )
+
+@app.post('/api/upload/sepa')
+async def upload_sepa(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Endpoint para subir documentos SEPA"""
+    try:
+        file_extension = file.filename.split('.')[-1].lower()
+        if file_extension not in ['pdf', 'doc', 'docx']:
+            raise HTTPException(
+                status_code=400,
+                detail="Tipo de archivo no permitido. Solo se permiten PDF y documentos Word."
+            )
+
+        file_name = f"{uuid.uuid4()}.{file_extension}"
+        file_path = UPLOAD_DIR / file_name
+        
+        content = await file.read()
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+        
+        file_url = f"/uploads/sepa/{file_name}"
+        
+        return {
+            "url": file_url,
+            "filename": file.filename
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error al subir archivo SEPA: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error al procesar el archivo"
+        )
+
+@app.get('/api/solicitudes/resumen')
+async def obtener_resumen_solicitudes(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Obtener resumen de solicitudes para el dashboard"""
+    try:
+        # Obtener todas las solicitudes asociadas al usuario
+        result = await db.execute(
+            select(models.Solicitud)
+            .where(models.Solicitud.comercial_id == current_user.id)
+        )
+        solicitudes = result.scalars().all()
+
+        # Contar solicitudes por estado
+        pendientes = sum(1 for s in solicitudes if s.estado in [
+            EstadoSolicitud.PENDIENTE_DIRECTOR,
+            EstadoSolicitud.PENDIENTE_PEDIDOS,
+            EstadoSolicitud.PENDIENTE_ADMIN
+        ])
+        completadas = sum(1 for s in solicitudes if s.estado == EstadoSolicitud.COMPLETADO)
+        rechazadas = sum(1 for s in solicitudes if s.estado == EstadoSolicitud.RECHAZADO)
+
+        return {
+            "pendientes": pendientes,
+            "completadas": completadas,
+            "rechazadas": rechazadas
+        }
+    except Exception as e:
+        logger.error(f"Error al obtener resumen: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error al obtener el resumen de solicitudes"
+        )
+
+# Autenticación
 @app.post("/token")
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),

@@ -36,7 +36,6 @@ class EstadoSolicitud(str, enum.Enum):
     RECHAZADO = "rechazado"
 
 class Solicitud(Base):
-    """Modelo para las solicitudes de alta de nuevos clientes"""
     __tablename__ = "solicitudes"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -60,19 +59,18 @@ class SolicitudArchivada(Base):
     """
     __tablename__ = 'solicitudes_archivadas'
 
-    id = Column(UUID(as_uuid = True), primary_key = True, default = uuid.uuid4)
-    solicitud_original_id = Column(UUID(as_uuid = True), nullable = False)
-
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    solicitud_original_id = Column(UUID(as_uuid=True), nullable=False)
     # Datos comprimidos de la solicitud original
-    resumen = Column(JSONB, nullable = False)
-
+    resumen = Column(JSONB, nullable=False)
+    
     # Fechas importantes del proceso
-    fecha_creacion = Column(DateTime(timezone = True), nullable = False)
-    fecha_aprobacion_director = Column(DateTime(timezone = True))
-    fecha_aprobacion_pedidos = Column(DateTime(timezone = True))
-    fecha_aprobacion_admin = Column(DateTime(timezone = True))
-    fecha_archivado = Column(DateTime(timezone = True), default = datetime.utcnow)
-
+    fecha_creacion = Column(DateTime(timezone=True), nullable=False)
+    fecha_aprobacion_director = Column(DateTime(timezone=True))
+    fecha_aprobacion_pedidos = Column(DateTime(timezone=True))
+    fecha_aprobacion_admin = Column(DateTime(timezone=True))
+    fecha_archivado = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
     # Metadata importante
-    comercial_email = Column(String, nullable = False)
-    cliente_nombre = Column(String, nullable = False)
+    comercial_email = Column(String, nullable=False)
+    cliente_nombre = Column(String, nullable=False)

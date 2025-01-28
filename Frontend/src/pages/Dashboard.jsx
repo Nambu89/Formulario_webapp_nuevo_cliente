@@ -1,71 +1,141 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
+import { Card, CardContent } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Loader2, Plus, ClipboardList, CheckSquare } from 'lucide-react';
 
 const Dashboard = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const [resumen, setResumen] = useState({
+        pendientes: 0,
+        completadas: 0,
+        rechazadas: 0
+    });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchResumen = async () => {
+            try {
+                const response = await fetch('http://localhost:8000/api/solicitudes/resumen', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                if (!response.ok) throw new Error('Error al cargar resumen');
+                const data = await response.json();
+                setResumen(data);
+            } catch (error) {
+                console.error('Error:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchResumen();
+    }, []);
+
+    if (loading) {
+        return (
+            <Layout>
+                <div className="flex justify-center items-center h-[calc(100vh-64px)]">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+            </Layout>
+        );
+    }
 
     return (
         <Layout>
-            <div className="bg-white shadow-sm rounded-lg p-6">
+            <div className="container mx-auto px-4 py-8">
                 <h1 className="text-2xl font-bold mb-6">
                     Bienvenido, {user?.name}
                 </h1>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Tarjeta de Solicitudes Pendientes */}
-                    <div className="bg-blue-50 p-6 rounded-lg">
-                        <h3 className="text-lg font-semibold text-blue-700 mb-2">
-                            Solicitudes Pendientes
-                        </h3>
-                        <p className="text-3xl font-bold text-blue-900">0</p>
-                    </div>
+                {/* Tarjetas de estadísticas */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <Card className="bg-blue-50">
+                        <CardContent className="p-6">
+                            <h3 className="text-lg font-semibold text-blue-700 mb-2">
+                                Solicitudes Pendientes
+                            </h3>
+                            <p className="text-3xl font-bold text-blue-900">{resumen.pendientes}</p>
+                        </CardContent>
+                    </Card>
 
-                    {/* Tarjeta de Solicitudes Completadas */}
-                    <div className="bg-green-50 p-6 rounded-lg">
-                        <h3 className="text-lg font-semibold text-green-700 mb-2">
-                            Solicitudes Completadas
-                        </h3>
-                        <p className="text-3xl font-bold text-green-900">0</p>
-                    </div>
+                    <Card className="bg-green-50">
+                        <CardContent className="p-6">
+                            <h3 className="text-lg font-semibold text-green-700 mb-2">
+                                Solicitudes Completadas
+                            </h3>
+                            <p className="text-3xl font-bold text-green-900">{resumen.completadas}</p>
+                        </CardContent>
+                    </Card>
 
-                    {/* Tarjeta de Solicitudes Rechazadas */}
-                    <div className="bg-red-50 p-6 rounded-lg">
-                        <h3 className="text-lg font-semibold text-red-700 mb-2">
-                            Solicitudes Rechazadas
-                        </h3>
-                        <p className="text-3xl font-bold text-red-900">0</p>
-                    </div>
+                    <Card className="bg-red-50">
+                        <CardContent className="p-6">
+                            <h3 className="text-lg font-semibold text-red-700 mb-2">
+                                Solicitudes Rechazadas
+                            </h3>
+                            <p className="text-3xl font-bold text-red-900">{resumen.rechazadas}</p>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {/* Acciones Rápidas */}
-                <div className="mt-8">
+                <div className="space-y-4">
                     <h2 className="text-xl font-semibold mb-4">Acciones Rápidas</h2>
-                    <div className="space-y-4">
-                        {user?.role === 'comercial' && (
-                            <button 
-                                onClick={() => navigate('/nuevo-cliente')}
-                                className="w-full p-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                                </svg>
-                                <span>Nuevo Cliente</span>
-                            </button>
-                        )}
-                        
-                        <button 
-                            onClick={() => navigate('/mis-solicitudes')}
-                            className="w-full p-4 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center space-x-2"
+                    
+                    {/* Nueva Solicitud - visible para todos */}
+                    <Button
+                        onClick={() => navigate('/nuevo-cliente')}
+                        className="w-full bg-blue-600 hover:bg-blue-700"
+                    >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Nueva Solicitud
+                    </Button>
+
+                    {/* Ver Mis Solicitudes - visible para todos */}
+                    <Button
+                        onClick={() => navigate('/mis-solicitudes')}
+                        className="w-full bg-gray-600 hover:bg-gray-700"
+                    >
+                        <ClipboardList className="mr-2 h-4 w-4" />
+                        Ver Mis Solicitudes
+                    </Button>
+
+                    {/* Aprobación de Solicitudes - visible para roles específicos y admin */}
+                    {(user?.role === 'director' || user?.role === 'pedidos' || user?.role === 'admin') && (
+                        <Button
+                            onClick={() => navigate('/aprobacion-solicitudes')}
+                            className="w-full bg-green-600 hover:bg-green-700"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0h8v12H6V4z" clipRule="evenodd" />
-                            </svg>
-                            <span>Ver Mis Solicitudes</span>
-                        </button>
-                    </div>
+                            <CheckSquare className="mr-2 h-4 w-4" />
+                            {user.role === 'director' ? 'Solicitudes Pendientes de Aprobación' :
+                             user.role === 'pedidos' ? 'Solicitudes Pendientes de Pedidos' :
+                             'Gestionar Solicitudes'}
+                        </Button>
+                    )}
+
+                    {/* Panel de Administración - solo visible para admin */}
+                    {user?.role === 'admin' && (
+                        <>
+                            <Button
+                                onClick={() => navigate('/admin/usuarios')}
+                                className="w-full bg-purple-600 hover:bg-purple-700"
+                            >
+                                Gestionar Usuarios
+                            </Button>
+                            <Button
+                                onClick={() => navigate('/admin/solicitudes')}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700"
+                            >
+                                Todas las Solicitudes
+                            </Button>
+                        </>
+                    )}
                 </div>
             </div>
         </Layout>

@@ -1,77 +1,73 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
+import SolicitudesTable from '../components/SolicitudesTable';
 import { useAuth } from '../context/AuthContext';
+import { Loader2 } from 'lucide-react';
+import { Alert, AlertDescription } from '../components/ui/alert';
 
 const MisSolicitudes = () => {
     const [solicitudes, setSolicitudes] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const { user } = useAuth();
 
     useEffect(() => {
         const fetchSolicitudes = async () => {
             try {
                 const response = await fetch(
-                    `http://localhost:8000/api/solicitudes/usuario/${user.email}`,
+                    `http://localhost:8000/api/solicitudes/usuario/${encodeURIComponent(user.email)}`,
                     {
                         headers: {
                             'Authorization': `Bearer ${localStorage.getItem('token')}`
                         }
                     }
                 );
+                if (!response.ok) {
+                    throw new Error('Error al cargar las solicitudes');
+                }
                 const data = await response.json();
                 setSolicitudes(data);
             } catch (error) {
-                console.error('Error al cargar solicitudes:', error);
+                console.error('Error:', error);
+                setError(error.message);
             } finally {
-                setIsLoading(false);
+                setLoading(false);
             }
         };
 
         fetchSolicitudes();
     }, [user.email]);
 
+    if (loading) {
+        return (
+            <Layout>
+                <div className="flex justify-center items-center h-[calc(100vh-64px)]">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+            </Layout>
+        );
+    }
+
     return (
         <Layout>
-            <div className="bg-white shadow-sm rounded-lg p-6">
-                <h1 className="text-2xl font-bold mb-6">Mis Solicitudes</h1>
-
-                {isLoading ? (
-                    <p>Cargando solicitudes...</p>
-                ) : solicitudes.length > 0 ? (
-                    <div className="space-y-4">
-                        {solicitudes.map((solicitud) => (
-                            <div 
-                                key={solicitud.id} 
-                                className="border rounded-lg p-4 hover:bg-gray-50"
-                            >
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <p className="font-medium">
-                                            Cliente: {solicitud.datos_comercial?.nombre || 'N/A'}
-                                        </p>
-                                        <p className="text-sm text-gray-600">
-                                            Estado: {solicitud.estado}
-                                        </p>
-                                        <p className="text-sm text-gray-600">
-                                            Fecha: {new Date(solicitud.fecha_creacion).toLocaleDateString()}
-                                        </p>
-                                    </div>
-                                    <span className={`px-3 py-1 rounded-full text-sm ${
-                                        solicitud.estado === 'completado' 
-                                            ? 'bg-green-100 text-green-800'
-                                            : solicitud.estado === 'rechazado'
-                                            ? 'bg-red-100 text-red-800'
-                                            : 'bg-yellow-100 text-yellow-800'
-                                    }`}>
-                                        {solicitud.estado}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <p>No hay solicitudes para mostrar</p>
-                )}
+            <div className="container mx-auto px-4 py-8">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Mis Solicitudes</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {error ? (
+                            <Alert variant="destructive">
+                                <AlertDescription>{error}</AlertDescription>
+                            </Alert>
+                        ) : solicitudes.length > 0 ? (
+                            <SolicitudesTable solicitudes={solicitudes} />
+                        ) : (
+                            <p className="text-center text-gray-500">No hay solicitudes para mostrar</p>
+                        )}
+                    </CardContent>
+                </Card>
             </div>
         </Layout>
     );

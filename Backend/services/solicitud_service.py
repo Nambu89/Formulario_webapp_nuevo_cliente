@@ -58,9 +58,9 @@ class SolicitudService:
                     }
                 },
                 fecha_creacion = solicitud.creado_en,
-                fecha_aprobacion_director = solicitud.fecha__aprobacion.get('director'),
-                fecha_aprobacion_pedidos = solicitud.fecha__aprobacion.get('pedidos'),
-                fecha_aprobacion_admin = solicitud.fecha__aprobacion.get('admin'),
+                fecha_aprobacion_director = solicitud.fecha_aprobacion.get('director'),
+                fecha_aprobacion_pedidos = solicitud.fecha_aprobacion.get('pedidos'),
+                fecha_aprobacion_admin = solicitud.fecha_aprobacion.get('admin'),
                 comercial_email = solicitud.comercial.email,
                 cliente_nombre = solicitud.datos_cliente.get('nombre')    
             )
