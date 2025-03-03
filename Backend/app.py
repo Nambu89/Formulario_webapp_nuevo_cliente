@@ -321,7 +321,7 @@ async def aprobar_rechazar_solicitud(
         
         # Si es una aprobación
         if aprobar:
-            # Actualizar estado y marcas según el rol
+            # Actualizar estado y datos según el rol
             if current_user.rol == 'director':
                 # Validar datos específicos para el director
                 marcas = datos.get('marcas', [])
@@ -334,8 +334,6 @@ async def aprobar_rechazar_solicitud(
                     )
                 
                 # Actualizar la solicitud con las marcas y tarifa
-                if 'marcas_aprobadas' not in solicitud.datos_cliente:
-                    solicitud.datos_cliente['marcas_aprobadas'] = []
                 solicitud.datos_cliente['marcas_aprobadas'] = marcas
                 solicitud.datos_cliente['tarifa_aprobada'] = tarifa
                 
@@ -357,6 +355,17 @@ async def aprobar_rechazar_solicitud(
                 solicitud.notas['pedidos'] = notas
                 
             elif current_user.rol == 'admin':
+                # Validar datos específicos para administración
+                termino_pago = datos.get('termino_pago', '')
+                
+                if not termino_pago:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Se requiere término de pago para aprobar la solicitud"
+                    )
+                
+                # Actualizar la solicitud con el término de pago
+                solicitud.datos_cliente['termino_pago'] = termino_pago
                 solicitud.aprobado_admin = True
                 solicitud.estado = EstadoSolicitud.COMPLETADO
                 

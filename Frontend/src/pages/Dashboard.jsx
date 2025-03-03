@@ -5,6 +5,7 @@ import Layout from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Loader2, Plus, ClipboardList, CheckSquare } from 'lucide-react';
+import { clienteAPI } from '../services/api'; // Importar clienteAPI
 
 const Dashboard = () => {
     const { user } = useAuth();
@@ -14,28 +15,36 @@ const Dashboard = () => {
         completadas: 0,
         rechazadas: 0
     });
+    const [solicitudesPendientes, setSolicitudesPendientes] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
-        const fetchResumen = async () => {
+        const fetchData = async () => {
             try {
-                const response = await fetch('http://localhost:8000/api/solicitudes/resumen', {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    }
-                });
-                if (!response.ok) throw new Error('Error al cargar resumen');
-                const data = await response.json();
-                setResumen(data);
+                // Obtener resumen (si es necesario, ajusta según el rol)
+                if (user.role === 'director') {
+                    const pendientesData = await clienteAPI.obtenerSolicitudesPendientes('director');
+                    setSolicitudesPendientes(pendientesData);
+                    setResumen({
+                        pendientes: pendientesData.length || 0,
+                        completadas: 0, // Ajusta según tu lógica backend
+                        rechazadas: 0   // Ajusta según tu lógica backend
+                    });
+                } else {
+                    const resumenData = await clienteAPI.obtenerResumenSolicitudes();
+                    setResumen(resumenData);
+                }
             } catch (error) {
                 console.error('Error:', error);
+                setError('Error al cargar los datos. Verifica tu conexión o contacta al administrador.');
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchResumen();
-    }, []);
+        fetchData();
+    }, [user]);
 
     if (loading) {
         return (
@@ -155,6 +164,9 @@ const Dashboard = () => {
                         </>
                     )}
                 </div>
+
+                {/* Mostrar error si existe */}
+                {error && <p className="text-red-500 mt-4">{error}</p>}
             </div>
         </Layout>
     );

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { format } from 'date-fns';
@@ -40,6 +39,7 @@ const getEstadoTexto = (estado) => {
 };
 
 const SolicitudesTable = ({ solicitudes, onAprobar, onRechazar, showActions = false }) => {
+    console.log('Solicitudes recibidas en la tabla:', solicitudes); // Depuración
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -57,10 +57,10 @@ const SolicitudesTable = ({ solicitudes, onAprobar, onRechazar, showActions = fa
                     {solicitudes.map((solicitud) => (
                         <tr key={solicitud.id} className="bg-white border-b hover:bg-gray-50">
                             <td className="px-6 py-4 font-medium text-gray-900">
-                                {solicitud.datos_comercial.nombre}
+                                {solicitud.datos_comercial?.nombre || 'Sin nombre'}
                             </td>
                             <td className="px-6 py-4">
-                                {solicitud.datos_comercial.cif_nif}
+                                {solicitud.datos_comercial?.cif_nif || 'Sin CIF/NIF'}
                             </td>
                             <td className="px-6 py-4">
                                 <Badge className={getEstadoColor(solicitud.estado)}>
@@ -68,10 +68,10 @@ const SolicitudesTable = ({ solicitudes, onAprobar, onRechazar, showActions = fa
                                 </Badge>
                             </td>
                             <td className="px-6 py-4">
-                                {format(new Date(solicitud.fecha_creacion), 'dd/MM/yyyy HH:mm', { locale: es })}
+                                {solicitud.fecha_creacion ? format(new Date(solicitud.fecha_creacion), 'dd/MM/yyyy HH:mm', { locale: es }) : 'Sin fecha'}
                             </td>
                             <td className="px-6 py-4">
-                                {solicitud.datos_comercial.tipo_carga}
+                                {solicitud.datos_comercial?.tipo_carga || 'Sin tipo'}
                             </td>
                             {showActions && (
                                 <td className="px-6 py-4">
