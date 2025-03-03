@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from auth.auth_router import router as auth_router
 from pathlib import Path
 from pydantic import BaseModel, EmailStr, ValidationError
 from enum import Enum
@@ -60,6 +61,8 @@ app = FastAPI(
     version='1.0.0',
     lifespan=lifespan
 )
+
+app.include_router(auth_router)
 
 # Configuración de CORS
 app.add_middleware(
@@ -221,70 +224,18 @@ async def obtener_solicitudes_pendientes_por_rol(
 ):
     """Obtener solicitudes pendientes según el rol"""
     try:
-        if current_user.rol != rol:
-            raise HTTPException(
-                status_code=403,
-                detail="No tiene permisos para ver estas solicitudes"
-            )
-
-        estado_buscar = None
-        if rol == "director":
-            estado_buscar = EstadoSolicitud.PENDIENTE_DIRECTOR
-        elif rol == "pedidos":
-            estado_buscar = EstadoSolicitud.PENDIENTE_PEDIDOS
-        elif rol == "admin":
-            estado_buscar = EstadoSolicitud.PENDIENTE_ADMIN
-        else:
-            raise HTTPException(status_code=400, detail="Rol no válido")
-
-        result = await db.execute(
-            select(models.Solicitud)
-            .where(models.Solicitud.estado == estado_buscar)
-            .order_by(models.Solicitud.creado_en.desc())
-        )
-        solicitudes = result.scalars().all()
-        
-        return [
-            {
-                "id": str(solicitud.id),
-                "datos_comercial": solicitud.datos_cliente,
-                "estado": solicitud.estado,
-                "fecha_creacion": solicitud.creado_en,
-                "ultima_modificacion": solicitud.actualizado_en,
-                "aprobado_director": solicitud.aprobado_director,
-                "aprobado_pedidos": solicitud.aprobado_pedidos,
-                "aprobado_admin": solicitud.aprobado_admin,
-                "notas": solicitud.notas
-            }
-            for solicitud in solicitudes
-        ]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error al obtener solicitudes: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Error al obtener las solicitudes"
-        )
-
-@app.get('/api/solicitudes/pendientes/{rol}')
-async def obtener_solicitudes_pendientes_por_rol(
-    rol: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db)
-):
-    """Obtener solicitudes pendientes según el rol"""
-    try:
         logger.info(f"Obteniendo solicitudes pendientes para rol: {rol}")
         logger.info(f"Usuario actual: {current_user.email}, rol: {current_user.rol}")
         
-        if current_user.rol != rol:
+        # Verificar permisos: solo el mismo rol o admin puede ver estas solicitudes
+        if current_user.rol != rol and current_user.rol != 'admin':
             logger.warning(f"El usuario {current_user.email} con rol {current_user.rol} intenta acceder a solicitudes de rol {rol}")
             raise HTTPException(
                 status_code=403,
                 detail="No tiene permisos para ver estas solicitudes"
             )
 
+        # Determinar el estado a buscar según el rol
         estado_buscar = None
         if rol == "director":
             estado_buscar = EstadoSolicitud.PENDIENTE_DIRECTOR
@@ -297,6 +248,7 @@ async def obtener_solicitudes_pendientes_por_rol(
             
         logger.info(f"Buscando solicitudes con estado: {estado_buscar}")
 
+        # Consultar todas las solicitudes con el estado correspondiente
         result = await db.execute(
             select(models.Solicitud)
             .where(models.Solicitud.estado == estado_buscar)
@@ -304,7 +256,7 @@ async def obtener_solicitudes_pendientes_por_rol(
         )
         solicitudes = result.scalars().all()
         
-        logger.info(f"Encontradas {len(solicitudes)} solicitudes pendientes")
+        logger.info(f"Encontradas {len(solicitudes)} solicitudes pendientes para el rol {rol}")
         
         return [
             {
@@ -323,11 +275,129 @@ async def obtener_solicitudes_pendientes_por_rol(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error al obtener solicitudes: {e}")
+        logger.error(f"Error al obtener solicitudes pendientes: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail="Error al obtener las solicitudes"
+            detail="Error al obtener las solicitudes pendientes"
         )
+    
+@app.put('/api/solicitudes/{solicitud_id}/aprobar')
+async def aprobar_rechazar_solicitud(
+    solicitud_id: UUID,
+    datos: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Aprobar o rechazar una solicitud según el rol del usuario"""
+    try:
+        logger.info(f"Aprobar/rechazar solicitud {solicitud_id} por {current_user.email} con rol {current_user.rol}")
+        logger.info(f"Datos recibidos: {datos}")
+        
+        # Obtener la solicitud
+        result = await db.execute(
+            select(models.Solicitud).where(models.Solicitud.id == solicitud_id)
+        )
+        solicitud = result.scalar_one_or_none()
+        
+        if not solicitud:
+            raise HTTPException(
+                status_code=404,
+                detail="Solicitud no encontrada"
+            )
+            
+        # Verificar que la solicitud esté en el estado correcto para este rol
+        if (current_user.rol == 'director' and solicitud.estado != EstadoSolicitud.PENDIENTE_DIRECTOR) or \
+           (current_user.rol == 'pedidos' and solicitud.estado != EstadoSolicitud.PENDIENTE_PEDIDOS) or \
+           (current_user.rol == 'admin' and solicitud.estado != EstadoSolicitud.PENDIENTE_ADMIN):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Esta solicitud no está pendiente para el rol {current_user.rol}"
+            )
+            
+        # Procesar la solicitud
+        aprobar = datos.get('aprobar', False)
+        notas = datos.get('notas', '')
+        
+        # Si es una aprobación
+        if aprobar:
+            # Actualizar estado y marcas según el rol
+            if current_user.rol == 'director':
+                # Validar datos específicos para el director
+                marcas = datos.get('marcas', [])
+                tarifa = datos.get('tarifa', '')
+                
+                if not marcas or not tarifa:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Se requieren marcas y tarifa para aprobar la solicitud"
+                    )
+                
+                # Actualizar la solicitud con las marcas y tarifa
+                if 'marcas_aprobadas' not in solicitud.datos_cliente:
+                    solicitud.datos_cliente['marcas_aprobadas'] = []
+                solicitud.datos_cliente['marcas_aprobadas'] = marcas
+                solicitud.datos_cliente['tarifa_aprobada'] = tarifa
+                
+                solicitud.aprobado_director = True
+                solicitud.estado = EstadoSolicitud.PENDIENTE_PEDIDOS
+                
+                # Guardar notas del director
+                if not solicitud.notas:
+                    solicitud.notas = {}
+                solicitud.notas['director'] = notas
+                
+            elif current_user.rol == 'pedidos':
+                solicitud.aprobado_pedidos = True
+                solicitud.estado = EstadoSolicitud.PENDIENTE_ADMIN
+                
+                # Guardar notas de pedidos
+                if not solicitud.notas:
+                    solicitud.notas = {}
+                solicitud.notas['pedidos'] = notas
+                
+            elif current_user.rol == 'admin':
+                solicitud.aprobado_admin = True
+                solicitud.estado = EstadoSolicitud.COMPLETADO
+                
+                # Guardar notas de admin
+                if not solicitud.notas:
+                    solicitud.notas = {}
+                solicitud.notas['admin'] = notas
+                
+        else:  # Rechazo
+            solicitud.estado = EstadoSolicitud.RECHAZADO
+            
+            # Guardar notas de rechazo
+            if not solicitud.notas:
+                solicitud.notas = {}
+            solicitud.notas[current_user.rol] = notas
+            
+        # Actualizar fecha de modificación
+        solicitud.actualizado_en = datetime.utcnow()
+            
+        await db.commit()
+        await db.refresh(solicitud)
+        
+        logger.info(f"Solicitud {solicitud_id} actualizada con éxito. Nuevo estado: {solicitud.estado}")
+        
+        return {
+            "id": str(solicitud.id),
+            "estado": solicitud.estado,
+            "mensaje": "Solicitud procesada correctamente"
+        }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error al procesar solicitud: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al procesar la solicitud: {str(e)}"
+        )
+    
 @app.post('/api/upload/sepa')
 async def upload_sepa(
     file: UploadFile = File(...),
@@ -417,54 +487,51 @@ async def obtener_solicitudes_usuario(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Obtener solicitudes de un usuario"""
+    """Obtener solicitudes creadas por un usuario comercial"""
     try:
-        # Si el usuario es director, pedidos o admin, mostrar solicitudes pendientes según su rol
-        if current_user.rol in ["director", "pedidos", "admin"]:
-            estado_buscar = None
-            if current_user.rol == "director":
-                estado_buscar = EstadoSolicitud.PENDIENTE_DIRECTOR
-            elif current_user.rol == "pedidos":
-                estado_buscar = EstadoSolicitud.PENDIENTE_PEDIDOS
-            elif current_user.rol == "admin":
-                estado_buscar = EstadoSolicitud.PENDIENTE_ADMIN
-
-            result = await db.execute(
-                select(
-                    models.Solicitud.id,
-                    models.Solicitud.comercial_id,
-                    models.Solicitud.datos_cliente,
-                    models.Solicitud.estado, 
-                    models.Solicitud.aprobado_director,
-                    models.Solicitud.aprobado_pedidos,
-                    models.Solicitud.aprobado_admin,
-                    models.Solicitud.notas,
-                    models.Solicitud.creado_en,
-                    models.Solicitud.actualizado_en
-                )
-                .where(models.Solicitud.estado == estado_buscar)
-                .order_by(models.Solicitud.creado_en.desc())
-            )
-        else:
-            # Para los comerciales, mostrar sus propias solicitudes
-            result = await db.execute(
-                select(
-                    models.Solicitud.id,
-                    models.Solicitud.comercial_id,
-                    models.Solicitud.datos_cliente,
-                    models.Solicitud.estado, 
-                    models.Solicitud.aprobado_director,
-                    models.Solicitud.aprobado_pedidos,
-                    models.Solicitud.aprobado_admin,
-                    models.Solicitud.notas,
-                    models.Solicitud.creado_en,
-                    models.Solicitud.actualizado_en
-                )
-                .where(models.Solicitud.comercial_id == current_user.id)
-                .order_by(models.Solicitud.creado_en.desc())
+        logger.info(f"Obteniendo solicitudes para el usuario con email: {email}")
+        
+        # Obtener el usuario por email
+        result_user = await db.execute(
+            select(User).where(User.email == email)
+        )
+        user = result_user.scalar_one_or_none()
+        
+        if not user:
+            logger.error(f"Usuario no encontrado: {email}")
+            raise HTTPException(
+                status_code=404,
+                detail="Usuario no encontrado"
             )
             
+        # Solo permitir que un usuario vea sus propias solicitudes o un admin vea cualquiera
+        if current_user.email != email and current_user.rol != 'admin':
+            logger.warning(f"El usuario {current_user.email} intenta acceder a solicitudes de {email}")
+            raise HTTPException(
+                status_code=403,
+                detail="No tiene permisos para ver estas solicitudes"
+            )
+            
+        # Obtener solicitudes del usuario (independientemente de su rol)
+        result = await db.execute(
+            select(
+                models.Solicitud.id,
+                models.Solicitud.comercial_id,
+                models.Solicitud.datos_cliente,
+                models.Solicitud.estado, 
+                models.Solicitud.aprobado_director,
+                models.Solicitud.aprobado_pedidos,
+                models.Solicitud.aprobado_admin,
+                models.Solicitud.notas,
+                models.Solicitud.creado_en,
+                models.Solicitud.actualizado_en
+            )
+            .where(models.Solicitud.comercial_id == user.id)
+            .order_by(models.Solicitud.creado_en.desc())
+        )
+        
         solicitudes = result.all()
+        logger.info(f"Encontradas {len(solicitudes)} solicitudes para el usuario {email}")
         
         return [
             {
@@ -480,13 +547,16 @@ async def obtener_solicitudes_usuario(
             }
             for solicitud in solicitudes
         ]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error al obtener solicitudes: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail="Error al obtener las solicitudes"
         )
-
+    
 @app.get("/users/me")
 async def read_users_me(current_user: User = Depends(get_current_user)):
     """Obtener información del usuario actual"""

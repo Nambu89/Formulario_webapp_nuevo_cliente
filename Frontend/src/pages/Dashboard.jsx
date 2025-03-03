@@ -107,15 +107,33 @@ const Dashboard = () => {
                     </Button>
 
                     {/* Aprobación de Solicitudes - visible para roles específicos y admin */}
-                    {(user?.role === 'director' || user?.role === 'pedidos' || user?.role === 'admin') && (
+                    {user?.role === 'director' && (
                         <Button
                             onClick={() => navigate('/aprobacion-solicitudes')}
                             className="w-full bg-green-600 hover:bg-green-700"
                         >
                             <CheckSquare className="mr-2 h-4 w-4" />
-                            {user.role === 'director' ? 'Solicitudes Pendientes de Aprobación' :
-                             user.role === 'pedidos' ? 'Solicitudes Pendientes de Pedidos' :
-                             'Gestionar Solicitudes'}
+                            Solicitudes Pendientes de Aprobación
+                        </Button>
+                    )}
+
+                    {user?.role === 'pedidos' && (
+                        <Button
+                            onClick={() => navigate('/aprobacion-solicitudes')}
+                            className="w-full bg-green-600 hover:bg-green-700"
+                        >
+                            <CheckSquare className="mr-2 h-4 w-4" />
+                            Solicitudes Pendientes de Pedidos
+                        </Button>
+                    )}
+
+                    {user?.role === 'admin' && (
+                        <Button
+                            onClick={() => navigate('/aprobacion-solicitudes')}
+                            className="w-full bg-green-600 hover:bg-green-700"
+                        >
+                            <CheckSquare className="mr-2 h-4 w-4" />
+                            Solicitudes Pendientes de Administración
                         </Button>
                     )}
 
