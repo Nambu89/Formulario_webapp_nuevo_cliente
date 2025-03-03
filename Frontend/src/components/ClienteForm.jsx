@@ -24,6 +24,7 @@ const ClienteForm = () => {
     correo: '',
     cif_nif: '',
     tipoCarga: '',
+    metodoPago: '',
     sepaDocumento: null
   });
 
@@ -34,7 +35,7 @@ const ClienteForm = () => {
     const newErrors = {};
     const requiredFields = [
       'nombre', 'direccion', 'poblacion', 'codigoPostal',
-      'nombreContacto', 'telefono', 'correo', 'cif_nif', 'tipoCarga'
+      'nombreContacto', 'telefono', 'correo', 'cif_nif', 'tipoCarga', 'metodoPago'
     ];
 
     requiredFields.forEach(field => {
@@ -43,8 +44,9 @@ const ClienteForm = () => {
       }
     });
 
-    if (!formData.sepaDocumento) {
-      newErrors.sepaDocumento = 'Debe adjuntar el documento SEPA';
+    // Validar documento SEPA solo si el método de pago es REMESA
+    if (formData.metodoPago === 'REMESA' && !formData.sepaDocumento) {
+      newErrors.sepaDocumento = 'Debe adjuntar el documento SEPA para el método de pago REMESA';
     }
 
     setErrors(newErrors);
@@ -72,9 +74,9 @@ const ClienteForm = () => {
 
     setIsLoading(true);
     try {
-      // Primero subimos el documento SEPA
+      // Primero subimos el documento SEPA si es necesario
       let sepaUrl = null;
-      if (formData.sepaDocumento) {
+      if (formData.metodoPago === 'REMESA' && formData.sepaDocumento) {
         const formDataFile = new FormData();
         formDataFile.append('file', formData.sepaDocumento);
         const fileResponse = await fetch('http://localhost:8000/api/upload/sepa', {
@@ -278,35 +280,55 @@ const ClienteForm = () => {
                       <span className="text-sm text-red-500">{errors.correo}</span>
                     )}
                   </div>
-                </div>
 
-                <div className="mt-6">
-                  <Label>Documento SEPA *</Label>
-                  <div className="mt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => document.getElementById('sepa-upload').click()}
+                  <div className="space-y-2">
+                    <Label htmlFor="metodoPago">Método de Pago *</Label>
+                    <Select 
+                      id="metodoPago"
+                      value={formData.metodoPago}
+                      onChange={(e) => handleChange('metodoPago', e.target.value)}
+                      className={errors.metodoPago ? 'border-red-500' : ''}
                     >
-                      <Upload className="mr-2 h-4 w-4" />
-                      Subir documento SEPA
-                    </Button>
-                    <input
-                      id="sepa-upload"
-                      type="file"
-                      className="hidden"
-                      onChange={(e) => handleChange('sepaDocumento', e.target.files[0])}
-                    />
-                    {formData.sepaDocumento && (
-                      <p className="mt-2 text-sm text-gray-600">
-                        Archivo seleccionado: {formData.sepaDocumento.name}
-                      </p>
-                    )}
-                    {errors.sepaDocumento && (
-                      <span className="text-sm text-red-500 block mt-1">{errors.sepaDocumento}</span>
+                      <option value="">Seleccione método de pago</option>
+                      <option value="REMESA">REMESA</option>
+                      <option value="TRANSFERENCIA">TRANSFERENCIA</option>
+                    </Select>
+                    {errors.metodoPago && (
+                      <span className="text-sm text-red-500">{errors.metodoPago}</span>
                     )}
                   </div>
                 </div>
+
+                {/* Campo para documento SEPA - solo visible si metodoPago es REMESA */}
+                {formData.metodoPago === 'REMESA' && (
+                  <div className="mt-6">
+                    <Label>Documento SEPA *</Label>
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => document.getElementById('sepa-upload').click()}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Subir documento SEPA
+                      </Button>
+                      <input
+                        id="sepa-upload"
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => handleChange('sepaDocumento', e.target.files[0])}
+                      />
+                      {formData.sepaDocumento && (
+                        <p className="mt-2 text-sm text-gray-600">
+                          Archivo seleccionado: {formData.sepaDocumento.name}
+                        </p>
+                      )}
+                      {errors.sepaDocumento && (
+                        <span className="text-sm text-red-500 block mt-1">{errors.sepaDocumento}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {errors.submit && (
                   <Alert variant="destructive">

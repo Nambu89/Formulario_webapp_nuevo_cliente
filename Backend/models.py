@@ -37,20 +37,21 @@ class EstadoSolicitud(str, enum.Enum):
 
 class Solicitud(Base):
     __tablename__ = "solicitudes"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    comercial_id = Column(UUID(as_uuid=True), ForeignKey('usuarios.id'), nullable=False)
-    comercial = relationship("User", back_populates="solicitudes")
     
-    datos_cliente = Column(JSONB, nullable=False)
-    estado = Column(Enum(EstadoSolicitud), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    comercial_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"))
+    datos_cliente = Column(JSONB)
+    estado = Column(Enum(EstadoSolicitud))
     aprobado_director = Column(Boolean, default=False)
     aprobado_pedidos = Column(Boolean, default=False)
     aprobado_admin = Column(Boolean, default=False)
-    notas = Column(JSONB, default={})
+    notas = Column(JSONB, default=lambda: {})
+    # fecha_aprobacion = Column(JSONB, default=lambda: {})  # Comentar esta línea
+    creado_en = Column(DateTime, default=datetime.utcnow)
+    actualizado_en = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    creado_en = Column(DateTime(timezone=True), default=datetime.utcnow)
-    actualizado_en = Column(DateTime(timezone=True), onupdate=datetime.utcnow)
+    # Añadir esta línea para establecer la relación con el usuario
+    comercial = relationship("User", back_populates="solicitudes")
 
 class SolicitudArchivada(Base):
     """

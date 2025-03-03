@@ -1,17 +1,19 @@
 import sys
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pathlib import Path
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ValidationError
 from enum import Enum
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uvicorn
 import uuid
 import logging
+import traceback
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from database import get_async_db, engine, Base, verify_database_connection, init_db
@@ -77,33 +79,22 @@ class TipoCarga(str, Enum):
     GRUP = 'GRUP'
     TTPRO = 'TTPRO'
 
-class DatosComercial(BaseModel):
-    nombre: str
-    direccion: str
-    poblacion: str
-    codigo_postal: str
-    nombre_contacto: str
-    telefono: str
-    correo: EmailStr
-    cif_nif: str
-    tipo_carga: TipoCarga
-    sepa_documento: Optional[str] = None
+class MetodoPago(str, Enum):
+    REMESA = 'REMESA'
+    TRANSFERENCIA = 'TRANSFERENCIA'
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "nombre": "Empresa Example SL",
-                "direccion": "Calle Principal 123",
-                "poblacion": "Valencia",
-                "codigo_postal": "46001",
-                "nombre_contacto": "Juan Pérez",
-                "telefono": "960000000",
-                "correo": "contacto@example.com",
-                "cif_nif": "B12345678",
-                "tipo_carga": "COMP",
-                "sepa_documento": "sepa_12345.pdf"
-            }
-        }
+class DatosComercial(BaseModel):
+    nombre: Optional[str] = None
+    direccion: Optional[str] = None
+    poblacion: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    nombre_contacto: Optional[str] = None
+    telefono: Optional[str] = None
+    correo: Optional[EmailStr] = None
+    cif_nif: Optional[str] = None
+    tipo_carga: Optional[TipoCarga] = None
+    metodo_pago: Optional[MetodoPago] = None
+    sepa_documento: Optional[str] = None
 
 class SolicitudCliente(BaseModel):
     id: str
@@ -119,12 +110,65 @@ class SolicitudCliente(BaseModel):
 # Endpoints para solicitudes
 @app.post('/api/solicitudes/')
 async def crear_solicitud(
-    datos: DatosComercial,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
     """Crear una nueva solicitud"""
     try:
+        # Obtener el cuerpo de la petición en bruto
+        body = await request.body()
+        logger.info(f"Datos recibidos en bruto: {body.decode('utf-8')}")
+        
+        # Analizar como JSON
+        try:
+            datos_json = json.loads(body.decode('utf-8'))
+            logger.info(f"Datos como JSON: {datos_json}")
+            
+            # Mapeo de nombres de campos de camelCase a snake_case
+            campo_mapping = {
+                "codigoPostal": "codigo_postal",
+                "nombreContacto": "nombre_contacto",
+                "tipoCarga": "tipo_carga",
+                "metodoPago": "metodo_pago",
+                "sepaDocumento": "sepa_documento"
+            }
+            
+            # Aplicar mapeo
+            datos_mapeados = {}
+            for key, value in datos_json.items():
+                if key in campo_mapping:
+                    datos_mapeados[campo_mapping[key]] = value
+                else:
+                    datos_mapeados[key] = value
+                    
+            logger.info(f"Datos mapeados: {datos_mapeados}")
+            
+            # Validar con Pydantic
+            datos = DatosComercial(**datos_mapeados)
+            logger.info(f"Datos validados: {datos.dict()}")
+            
+        except json.JSONDecodeError:
+            logger.error("No se pudo decodificar el cuerpo como JSON")
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Error al decodificar JSON"}
+            )
+        except ValidationError as ve:
+            logger.error(f"Error de validación Pydantic: {ve}")
+            return JSONResponse(
+                status_code=422,
+                content={"detail": f"Error de validación: {str(ve)}"}
+            )
+        
+        # Validación para el documento SEPA
+        if datos.metodo_pago == MetodoPago.REMESA and not datos.sepa_documento:
+            logger.error("Se requiere documento SEPA para el método de pago REMESA")
+            raise HTTPException(
+                status_code=400,
+                detail="Se requiere documento SEPA para el método de pago REMESA"
+            )
+            
         nueva_solicitud = models.Solicitud(
             comercial_id=current_user.id,
             datos_cliente=datos.dict(),
@@ -132,9 +176,13 @@ async def crear_solicitud(
             notas={}
         )
         
+        logger.info(f"Creando solicitud para: {nueva_solicitud.datos_cliente}")
+        
         db.add(nueva_solicitud)
         await db.commit()
         await db.refresh(nueva_solicitud)
+        
+        logger.info(f"Solicitud creada con ID: {nueva_solicitud.id}")
         
         return {
             "id": str(nueva_solicitud.id),
@@ -151,12 +199,18 @@ async def crear_solicitud(
                 "notas": nueva_solicitud.notas
             }
         }
+    except HTTPException as he:
+        logger.error(f"HTTPException: {he.detail}")
+        await db.rollback()
+        raise he
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error al crear solicitud: {e}")
+        logger.error(f"Error al crear solicitud: {str(e)}")
+        logger.error(f"Tipo de excepción: {type(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail="Error al crear la solicitud"
+            detail=f"Error al crear la solicitud: {str(e)}"
         )
 
 @app.get('/api/solicitudes/pendientes/{rol}')
@@ -213,20 +267,44 @@ async def obtener_solicitudes_pendientes_por_rol(
             detail="Error al obtener las solicitudes"
         )
 
-@app.get('/api/solicitudes/usuario/{email}')
-async def obtener_solicitudes_usuario(
-    email: str,
+@app.get('/api/solicitudes/pendientes/{rol}')
+async def obtener_solicitudes_pendientes_por_rol(
+    rol: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Obtener solicitudes de un usuario"""
+    """Obtener solicitudes pendientes según el rol"""
     try:
+        logger.info(f"Obteniendo solicitudes pendientes para rol: {rol}")
+        logger.info(f"Usuario actual: {current_user.email}, rol: {current_user.rol}")
+        
+        if current_user.rol != rol:
+            logger.warning(f"El usuario {current_user.email} con rol {current_user.rol} intenta acceder a solicitudes de rol {rol}")
+            raise HTTPException(
+                status_code=403,
+                detail="No tiene permisos para ver estas solicitudes"
+            )
+
+        estado_buscar = None
+        if rol == "director":
+            estado_buscar = EstadoSolicitud.PENDIENTE_DIRECTOR
+        elif rol == "pedidos":
+            estado_buscar = EstadoSolicitud.PENDIENTE_PEDIDOS
+        elif rol == "admin":
+            estado_buscar = EstadoSolicitud.PENDIENTE_ADMIN
+        else:
+            raise HTTPException(status_code=400, detail="Rol no válido")
+            
+        logger.info(f"Buscando solicitudes con estado: {estado_buscar}")
+
         result = await db.execute(
             select(models.Solicitud)
-            .where(models.Solicitud.comercial_id == current_user.id)
+            .where(models.Solicitud.estado == estado_buscar)
             .order_by(models.Solicitud.creado_en.desc())
         )
         solicitudes = result.scalars().all()
+        
+        logger.info(f"Encontradas {len(solicitudes)} solicitudes pendientes")
         
         return [
             {
@@ -242,91 +320,14 @@ async def obtener_solicitudes_usuario(
             }
             for solicitud in solicitudes
         ]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error al obtener solicitudes: {e}")
         raise HTTPException(
             status_code=500,
             detail="Error al obtener las solicitudes"
         )
-
-@app.put('/api/solicitudes/{solicitud_id}/aprobar')
-async def aprobar_solicitud(
-    solicitud_id: str,
-    aprobar: bool,
-    notas: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db)
-):
-    """Aprobar o rechazar una solicitud"""
-    try:
-        result = await db.execute(
-            select(models.Solicitud).where(models.Solicitud.id == solicitud_id)
-        )
-        solicitud = result.scalar_one_or_none()
-
-        if not solicitud:
-            raise HTTPException(status_code=404, detail="Solicitud no encontrada")
-
-        # Actualizar estado según el rol y la decisión
-        if current_user.rol == "director":
-            solicitud.aprobado_director = aprobar
-            solicitud.estado = (
-                EstadoSolicitud.PENDIENTE_PEDIDOS if aprobar 
-                else EstadoSolicitud.RECHAZADO
-            )
-        elif current_user.rol == "pedidos":
-            if not solicitud.aprobado_director:
-                raise HTTPException(
-                    status_code=400,
-                    detail="La solicitud debe ser aprobada primero por el director"
-                )
-            solicitud.aprobado_pedidos = aprobar
-            solicitud.estado = (
-                EstadoSolicitud.PENDIENTE_ADMIN if aprobar 
-                else EstadoSolicitud.RECHAZADO
-            )
-        elif current_user.rol == "admin":
-            if not (solicitud.aprobado_director and solicitud.aprobado_pedidos):
-                raise HTTPException(
-                    status_code=400,
-                    detail="La solicitud debe ser aprobada por director y pedidos primero"
-                )
-            solicitud.aprobado_admin = aprobar
-            solicitud.estado = (
-                EstadoSolicitud.COMPLETADO if aprobar 
-                else EstadoSolicitud.RECHAZADO
-            )
-        else:
-            raise HTTPException(
-                status_code=403,
-                detail="No tiene permisos para aprobar solicitudes"
-            )
-
-        # Actualizar notas y fecha
-        if notas:
-            solicitud.notas = {
-                **solicitud.notas,
-                current_user.rol: notas
-            }
-        solicitud.ultima_modificacion = datetime.utcnow()
-
-        await db.commit()
-        
-        return {
-            "message": "Solicitud actualizada correctamente",
-            "estado": solicitud.estado
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Error al aprobar/rechazar solicitud: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Error al procesar la solicitud"
-        )
-
 @app.post('/api/upload/sepa')
 async def upload_sepa(
     file: UploadFile = File(...),
@@ -370,12 +371,23 @@ async def obtener_resumen_solicitudes(
 ):
     """Obtener resumen de solicitudes para el dashboard"""
     try:
-        # Obtener todas las solicitudes asociadas al usuario
+        # Obtener todas las solicitudes asociadas al usuario, sin incluir fecha_aprobacion
         result = await db.execute(
-            select(models.Solicitud)
+            select(
+                models.Solicitud.id,
+                models.Solicitud.comercial_id,
+                models.Solicitud.datos_cliente,
+                models.Solicitud.estado,
+                models.Solicitud.aprobado_director,
+                models.Solicitud.aprobado_pedidos,
+                models.Solicitud.aprobado_admin,
+                models.Solicitud.notas,
+                models.Solicitud.creado_en,
+                models.Solicitud.actualizado_en
+            )
             .where(models.Solicitud.comercial_id == current_user.id)
         )
-        solicitudes = result.scalars().all()
+        solicitudes = result.all()
 
         # Contar solicitudes por estado
         pendientes = sum(1 for s in solicitudes if s.estado in [
@@ -398,18 +410,82 @@ async def obtener_resumen_solicitudes(
             detail="Error al obtener el resumen de solicitudes"
         )
 
-# Autenticación
-@app.post("/token")
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+# También modifica la función obtener_solicitudes_usuario:
+@app.get('/api/solicitudes/usuario/{email}')
+async def obtener_solicitudes_usuario(
+    email: str,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Login y obtención de token JWT"""
-    auth_service = AuthService(db)
-    return await auth_service.authenticate_user(
-        form_data.username,
-        form_data.password
-    )
+    """Obtener solicitudes de un usuario"""
+    try:
+        # Si el usuario es director, pedidos o admin, mostrar solicitudes pendientes según su rol
+        if current_user.rol in ["director", "pedidos", "admin"]:
+            estado_buscar = None
+            if current_user.rol == "director":
+                estado_buscar = EstadoSolicitud.PENDIENTE_DIRECTOR
+            elif current_user.rol == "pedidos":
+                estado_buscar = EstadoSolicitud.PENDIENTE_PEDIDOS
+            elif current_user.rol == "admin":
+                estado_buscar = EstadoSolicitud.PENDIENTE_ADMIN
+
+            result = await db.execute(
+                select(
+                    models.Solicitud.id,
+                    models.Solicitud.comercial_id,
+                    models.Solicitud.datos_cliente,
+                    models.Solicitud.estado, 
+                    models.Solicitud.aprobado_director,
+                    models.Solicitud.aprobado_pedidos,
+                    models.Solicitud.aprobado_admin,
+                    models.Solicitud.notas,
+                    models.Solicitud.creado_en,
+                    models.Solicitud.actualizado_en
+                )
+                .where(models.Solicitud.estado == estado_buscar)
+                .order_by(models.Solicitud.creado_en.desc())
+            )
+        else:
+            # Para los comerciales, mostrar sus propias solicitudes
+            result = await db.execute(
+                select(
+                    models.Solicitud.id,
+                    models.Solicitud.comercial_id,
+                    models.Solicitud.datos_cliente,
+                    models.Solicitud.estado, 
+                    models.Solicitud.aprobado_director,
+                    models.Solicitud.aprobado_pedidos,
+                    models.Solicitud.aprobado_admin,
+                    models.Solicitud.notas,
+                    models.Solicitud.creado_en,
+                    models.Solicitud.actualizado_en
+                )
+                .where(models.Solicitud.comercial_id == current_user.id)
+                .order_by(models.Solicitud.creado_en.desc())
+            )
+            
+        solicitudes = result.all()
+        
+        return [
+            {
+                "id": str(solicitud.id),
+                "datos_comercial": solicitud.datos_cliente,
+                "estado": solicitud.estado,
+                "fecha_creacion": solicitud.creado_en,
+                "ultima_modificacion": solicitud.actualizado_en,
+                "aprobado_director": solicitud.aprobado_director,
+                "aprobado_pedidos": solicitud.aprobado_pedidos,
+                "aprobado_admin": solicitud.aprobado_admin,
+                "notas": solicitud.notas
+            }
+            for solicitud in solicitudes
+        ]
+    except Exception as e:
+        logger.error(f"Error al obtener solicitudes: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Error al obtener las solicitudes"
+        )
 
 @app.get("/users/me")
 async def read_users_me(current_user: User = Depends(get_current_user)):

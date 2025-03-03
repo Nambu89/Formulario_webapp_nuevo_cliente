@@ -42,7 +42,7 @@ class SolicitudService:
                     detail = f'La solicitud no está lista para archivar'
                 )
             
-            # Creamos el registro archivado
+           # Creamos el registro archivado con el campo metodo_pago y fechas corregidas
             solicitud_archivada = SolicitudArchivada(
                 solicitud_original_id = solicitud.id,
                 resumen = {
@@ -50,6 +50,7 @@ class SolicitudService:
                         'nombre': solicitud.datos_cliente.get('nombre'),
                         'cif_nif': solicitud.datos_cliente.get('cif_nif'),
                         'tipo_carga': solicitud.datos_cliente.get('tipo_carga'),
+                        'metodo_pago': solicitud.datos_cliente.get('metodo_pago'),
                     },
                     'proceso': {
                         'director': solicitud.notas.get('director'),
@@ -58,9 +59,9 @@ class SolicitudService:
                     }
                 },
                 fecha_creacion = solicitud.creado_en,
-                fecha_aprobacion_director = solicitud.fecha_aprobacion.get('director'),
-                fecha_aprobacion_pedidos = solicitud.fecha_aprobacion.get('pedidos'),
-                fecha_aprobacion_admin = solicitud.fecha_aprobacion.get('admin'),
+                fecha_aprobacion_director = solicitud.fecha_aprobacion.get('director') if solicitud.fecha_aprobacion else None,
+                fecha_aprobacion_pedidos = solicitud.fecha_aprobacion.get('pedidos') if solicitud.fecha_aprobacion else None,
+                fecha_aprobacion_admin = solicitud.fecha_aprobacion.get('admin') if solicitud.fecha_aprobacion else None,
                 comercial_email = solicitud.comercial.email,
                 cliente_nombre = solicitud.datos_cliente.get('nombre')    
             )
