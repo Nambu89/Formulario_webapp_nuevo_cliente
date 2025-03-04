@@ -12,11 +12,11 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogFooter,
 } from './ui/dialog';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
+import { Badge } from './ui/badge';
 
 // Selector de marcas
 const MarcasSelector = ({ selectedMarcas, onChange }) => {
@@ -120,6 +120,70 @@ const TerminosPagoSelector = ({ selectedTermino, onChange }) => {
                     </div>
                 ))}
             </div>
+        </div>
+    );
+};
+
+// Componente para mostrar información de aprobaciones previas
+const InfoAprobacionesPrevias = ({ solicitud }) => {
+    if (!solicitud) return null;
+    
+    const datosCliente = solicitud.datos_comercial || {};
+    const marcasAprobadas = datosCliente.marcas_aprobadas || [];
+    const tarifaAprobada = datosCliente.tarifa_aprobada || '';
+    const notas = solicitud.notas || {};
+    
+    return (
+        <div className="space-y-6 border p-4 rounded-md bg-gray-50 mb-4">
+            {/* Aprobación del Director */}
+            {solicitud.aprobado_director && (
+                <div>
+                    <h3 className="text-lg font-medium mb-3">Información del Director</h3>
+                    
+                    {/* Marcas aprobadas */}
+                    {marcasAprobadas.length > 0 && (
+                        <div className="mb-3">
+                            <p className="text-sm text-gray-500 mb-1">Marcas Aprobadas</p>
+                            <div className="flex flex-wrap gap-2">
+                                {marcasAprobadas.map(marca => (
+                                    <Badge key={marca} className="bg-blue-100 text-blue-800">
+                                        {marca}
+                                    </Badge>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Tarifa aprobada */}
+                    {tarifaAprobada && (
+                        <div className="mb-3">
+                            <p className="text-sm text-gray-500 mb-1">Tarifa Asignada</p>
+                            <Badge className="bg-purple-100 text-purple-800">
+                                {tarifaAprobada}
+                            </Badge>
+                        </div>
+                    )}
+                    
+                    {/* Notas del director */}
+                    {notas.director && (
+                        <div>
+                            <p className="text-sm text-gray-500 mb-1">Observaciones del Director</p>
+                            <p className="p-2 bg-gray-50 rounded">{notas.director}</p>
+                        </div>
+                    )}
+                </div>
+            )}
+            
+            {/* Aprobación de Pedidos */}
+            {solicitud.aprobado_pedidos && notas.pedidos && (
+                <div className="mt-4">
+                    <h3 className="text-lg font-medium mb-3">Información de Pedidos</h3>
+                    <div>
+                        <p className="text-sm text-gray-500 mb-1">Observaciones de Pedidos</p>
+                        <p className="p-2 bg-gray-50 rounded">{notas.pedidos}</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -309,21 +373,26 @@ const AprobacionSolicitudes = () => {
             </div>
 
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="max-w-4xl bg-white">
-                    <DialogHeader>
+                <DialogContent className="max-w-4xl bg-white h-[95vh] flex flex-col">
+                    <DialogHeader className="sticky top-0 bg-white z-10 p-0">
                         <DialogTitle>
                             {accion === 'aprobar' ? 'Aprobar Solicitud' : 'Rechazar Solicitud'}
                         </DialogTitle>
                     </DialogHeader>
                     
-                    <div className="space-y-6">
+                    <div className="overflow-y-auto flex-1 p-4" style={{ maxHeight: 'calc(95vh - 150px)' }}>
                         {/* Sección de información del cliente */}
-                        <div className="border p-4 rounded-md bg-gray-50">
+                        <div className="border p-4 rounded-md bg-gray-50 mb-4">
                             {selectedSolicitudData && <SolicitudDetalle solicitud={selectedSolicitudData} />}
                         </div>
                         
+                        {/* Para roles de pedidos y admin, mostrar información de aprobaciones previas */}
+                        {(user.role === 'pedidos' || user.role === 'admin') && (
+                            <InfoAprobacionesPrevias solicitud={selectedSolicitudData} />
+                        )}
+                        
                         {/* Sección de aprobación según rol */}
-                        <div className="border p-4 rounded-md">
+                        <div className="border p-4 rounded-md mb-4">
                             <h3 className="text-lg font-medium mb-4">
                                 {accion === 'aprobar' ? 'Formulario de Aprobación' : 'Formulario de Rechazo'}
                             </h3>
@@ -384,35 +453,36 @@ const AprobacionSolicitudes = () => {
                                 </div>
                             </div>
                         </div>
+                        
+                        {/* Botones de acción */}
+                        <div className="flex justify-end space-x-2">
+                            <Button
+                                variant="outline"
+                                onClick={() => setDialogOpen(false)}
+                                disabled={isApproving}
+                            >
+                                Cancelar
+                            </Button>
+                            <Button
+                                onClick={handleConfirmar}
+                                disabled={
+                                    isApproving || 
+                                    (user.role === 'director' && accion === 'aprobar' && (selectedMarcas.length === 0 || !selectedTarifa)) || 
+                                    (user.role === 'admin' && accion === 'aprobar' && !selectedTerminoPago)
+                                }
+                                className={accion === 'aprobar' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+                            >
+                                {isApproving ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Procesando...
+                                    </>
+                                ) : (
+                                    accion === 'aprobar' ? 'Confirmar Aprobación' : 'Confirmar Rechazo'
+                                )}
+                            </Button>
+                        </div>
                     </div>
-                    
-                    <DialogFooter className="mt-4">
-                        <Button
-                            variant="outline"
-                            onClick={() => setDialogOpen(false)}
-                            disabled={isApproving}
-                        >
-                            Cancelar
-                        </Button>
-                        <Button
-                            onClick={handleConfirmar}
-                            disabled={
-                                isApproving || 
-                                (user.role === 'director' && accion === 'aprobar' && (selectedMarcas.length === 0 || !selectedTarifa)) || 
-                                (user.role === 'admin' && accion === 'aprobar' && !selectedTerminoPago)
-                            }
-                            className={accion === 'aprobar' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-                        >
-                            {isApproving ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Procesando...
-                                </>
-                            ) : (
-                                accion === 'aprobar' ? 'Confirmar Aprobación' : 'Confirmar Rechazo'
-                            )}
-                        </Button>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </Layout>

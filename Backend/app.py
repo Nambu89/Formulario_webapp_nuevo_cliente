@@ -334,6 +334,9 @@ async def aprobar_rechazar_solicitud(
                     )
                 
                 # Actualizar la solicitud con las marcas y tarifa
+                if not solicitud.datos_cliente:
+                    solicitud.datos_cliente = {}
+                    
                 solicitud.datos_cliente['marcas_aprobadas'] = marcas
                 solicitud.datos_cliente['tarifa_aprobada'] = tarifa
                 
@@ -365,6 +368,9 @@ async def aprobar_rechazar_solicitud(
                     )
                 
                 # Actualizar la solicitud con el término de pago
+                if not solicitud.datos_cliente:
+                    solicitud.datos_cliente = {}
+                    
                 solicitud.datos_cliente['termino_pago'] = termino_pago
                 solicitud.aprobado_admin = True
                 solicitud.estado = EstadoSolicitud.COMPLETADO

@@ -4,8 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Loader2, Plus, ClipboardList, CheckSquare } from 'lucide-react';
-import { clienteAPI } from '../services/api'; // Importar clienteAPI
+import { Loader2, Plus, ClipboardList, CheckSquare, Users, List } from 'lucide-react';
 
 const Dashboard = () => {
     const { user } = useAuth();
@@ -15,35 +14,45 @@ const Dashboard = () => {
         completadas: 0,
         rechazadas: 0
     });
-    const [solicitudesPendientes, setSolicitudesPendientes] = useState([]);
+    const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
 
     useEffect(() => {
-        const fetchData = async () => {
+        const fetchResumen = async () => {
             try {
-                // Obtener resumen (si es necesario, ajusta según el rol)
-                if (user.role === 'director') {
-                    const pendientesData = await clienteAPI.obtenerSolicitudesPendientes('director');
-                    setSolicitudesPendientes(pendientesData);
-                    setResumen({
-                        pendientes: pendientesData.length || 0,
-                        completadas: 0, // Ajusta según tu lógica backend
-                        rechazadas: 0   // Ajusta según tu lógica backend
-                    });
-                } else {
-                    const resumenData = await clienteAPI.obtenerResumenSolicitudes();
-                    setResumen(resumenData);
+                // Para obtener el resumen general
+                const response = await fetch('http://localhost:8000/api/solicitudes/resumen', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                if (!response.ok) throw new Error('Error al cargar resumen');
+                const data = await response.json();
+                setResumen(data);
+                
+                // Para obtener el conteo específico de solicitudes pendientes según el rol
+                if (user.role === 'director' || user.role === 'pedidos' || user.role === 'admin') {
+                    const pendientesResponse = await fetch(
+                        `http://localhost:8000/api/solicitudes/pendientes/${user.role}`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                            }
+                        }
+                    );
+                    if (pendientesResponse.ok) {
+                        const pendientesData = await pendientesResponse.json();
+                        setSolicitudesPendientes(pendientesData.length);
+                    }
                 }
             } catch (error) {
                 console.error('Error:', error);
-                setError('Error al cargar los datos. Verifica tu conexión o contacta al administrador.');
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchData();
+        fetchResumen();
     }, [user]);
 
     if (loading) {
@@ -56,11 +65,18 @@ const Dashboard = () => {
         );
     }
 
+    const getDisplayName = () => {
+        if (user?.role === 'admin') return 'Responsable de Administración';
+        if (user?.role === 'pedidos') return 'Responsable de Pedidos';
+        if (user?.role === 'director') return 'Director Comercial';
+        return user?.name || '';
+    };
+
     return (
         <Layout>
             <div className="container mx-auto px-4 py-8">
                 <h1 className="text-2xl font-bold mb-6">
-                    Bienvenido, {user?.name}
+                    Bienvenido, {getDisplayName()}
                 </h1>
 
                 {/* Tarjetas de estadísticas */}
@@ -70,7 +86,11 @@ const Dashboard = () => {
                             <h3 className="text-lg font-semibold text-blue-700 mb-2">
                                 Solicitudes Pendientes
                             </h3>
-                            <p className="text-3xl font-bold text-blue-900">{resumen.pendientes}</p>
+                            <p className="text-3xl font-bold text-blue-900">
+                                {user.role === 'director' || user.role === 'pedidos' || user.role === 'admin' 
+                                    ? solicitudesPendientes 
+                                    : resumen.pendientes}
+                            </p>
                         </CardContent>
                     </Card>
 
@@ -115,7 +135,7 @@ const Dashboard = () => {
                         Ver Mis Solicitudes
                     </Button>
 
-                    {/* Aprobación de Solicitudes - visible para roles específicos y admin */}
+                    {/* Aprobación de Solicitudes - visible para roles específicos */}
                     {user?.role === 'director' && (
                         <Button
                             onClick={() => navigate('/aprobacion-solicitudes')}
@@ -137,36 +157,33 @@ const Dashboard = () => {
                     )}
 
                     {user?.role === 'admin' && (
-                        <Button
-                            onClick={() => navigate('/aprobacion-solicitudes')}
-                            className="w-full bg-green-600 hover:bg-green-700"
-                        >
-                            <CheckSquare className="mr-2 h-4 w-4" />
-                            Solicitudes Pendientes de Administración
-                        </Button>
-                    )}
-
-                    {/* Panel de Administración - solo visible para admin */}
-                    {user?.role === 'admin' && (
                         <>
+                            <Button
+                                onClick={() => navigate('/aprobacion-solicitudes')}
+                                className="w-full bg-green-600 hover:bg-green-700"
+                            >
+                                <CheckSquare className="mr-2 h-4 w-4" />
+                                Solicitudes Pendientes de Administración
+                            </Button>
+                            
                             <Button
                                 onClick={() => navigate('/admin/usuarios')}
                                 className="w-full bg-purple-600 hover:bg-purple-700"
                             >
+                                <Users className="mr-2 h-4 w-4" />
                                 Gestionar Usuarios
                             </Button>
+                            
                             <Button
                                 onClick={() => navigate('/admin/solicitudes')}
                                 className="w-full bg-indigo-600 hover:bg-indigo-700"
                             >
+                                <List className="mr-2 h-4 w-4" />
                                 Todas las Solicitudes
                             </Button>
                         </>
                     )}
                 </div>
-
-                {/* Mostrar error si existe */}
-                {error && <p className="text-red-500 mt-4">{error}</p>}
             </div>
         </Layout>
     );

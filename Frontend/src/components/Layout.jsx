@@ -11,6 +11,14 @@ const Layout = ({ children }) => {
         navigate('/login');
     };
 
+    // Función para obtener el nombre a mostrar según el rol
+    const getDisplayName = () => {
+        if (user?.role === 'admin') return 'Responsable de Administración';
+        if (user?.role === 'pedidos') return 'Responsable de Pedidos';
+        if (user?.role === 'director') return 'Director Comercial';
+        return user?.name || '';
+    };
+
     return (
         <div className="min-h-screen bg-gray-100">
             {/* Barra de navegación superior */}
@@ -56,7 +64,7 @@ const Layout = ({ children }) => {
                         <div className="flex items-center">
                             <div className="ml-3 relative">
                                 <div className="flex items-center space-x-4">
-                                    <span className="text-gray-700">{user?.name}</span>
+                                    <span className="text-gray-700">{getDisplayName()}</span>
                                     <button
                                         onClick={handleLogout}
                                         className="text-gray-600 hover:text-gray-900"
