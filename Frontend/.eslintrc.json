@@ -1,0 +1,10 @@
+{
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ],
+    "rules": {
+      "no-unused-vars": "off",
+      "jsx-a11y/heading-has-content": "off"
+    }
+  }
