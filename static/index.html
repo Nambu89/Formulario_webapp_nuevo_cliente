@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Alta de Nuevos Clientes - SVAN Trading</title>
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+
+    <!-- Importamos Tailwind CSS para los estilos -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+
+    <!-- Estilos personalizados -->
+    <style>
+        .step-active {
+            background-color: #1E40AF;
+            color: white;
+        }
+        .step-pending {
+            background-color: #E5E7EB;
+            color: #4B5563;
+        }
+        /* Añadimos estilo para el spinner de carga */
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from {transform: rotate(0deg);}
+            to {transform: rotate(360deg);}
+        }
+    </style>
+
+    <!-- Script principal -->
+    <script>
+        // Función para mostrar/ocultar el indicador de carga
+        function toggleLoadingState(loading, button) {
+            if (loading) {
+                button.disabled = true;
+                button.innerHTML = `
+                    <svg class="spinner -ml-1 mr-3 h-5 w-5 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Procesando...
+                `;
+            } else {
+                button.disabled = false;
+                button.textContent = 'Guardar y Continuar';
+            }
+        }
+
+        // Función para mostrar mensajes de error
+        function showError(form, message) {
+            // Primero removemos cualquier mensaje de error existente
+            const existingError = document.querySelector('.error-message');
+            if (existingError) {
+                existingError.remove();
+            }
+
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mt-4';
+            errorDiv.textContent = message;
+            form.parentNode.insertBefore(errorDiv, form);
+
+            // Auto-ocultar el mensaje después de 5 segundos
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+
+        // Cuando el documento está listo
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('clientForm');
+            const fileUpload = document.getElementById('file-upload');
+            const submitButton = form.querySelector('button[type="submit"]');
+            let selectedFile = null;
+
+            // Manejador para la selección de archivo
+            fileUpload.addEventListener('change', function(e) {
+                selectedFile = e.target.files[0];
+                const fileInfo = document.getElementById('file-info');
+                
+                if (fileInfo && selectedFile) {
+                    // Validamos el tipo de archivo
+                    if (!selectedFile.name.toLowerCase().endsWith('.pdf')) {
+                        showError(form, 'El documento debe ser un archivo PDF.');
+                        fileUpload.value = ''; // Limpiamos la selección
+                        selectedFile = null;
+                        fileInfo.textContent = '';
+                        return;
+                    }
+
+                    // Validamos el tamaño (10MB = 10 * 1024 * 1024 bytes)
+                    if (selectedFile.size > 10 * 1024 * 1024) {
+                        showError(form, 'El archivo es demasiado grande. El tamaño máximo es 10MB.');
+                        fileUpload.value = '';
+                        selectedFile = null;
+                        fileInfo.textContent = '';
+                        return;
+                    }
+
+                    fileInfo.textContent = `Archivo seleccionado: ${selectedFile.name}`;
+                }
+            });
+
+            // Manejador para el envío del formulario
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                // Validación del archivo SEPA
+                if (!selectedFile) {
+                    showError(form, 'Por favor, seleccione un documento SEPA.');
+                    return;
+                }
+
+                const formData = new FormData(form);
+                
+                // Creamos el objeto con los datos del cliente
+                const clientData = {
+                    nombre: formData.get('nombre'),
+                    direccion: formData.get('direccion'),
+                    poblacion: formData.get('poblacion'),
+                    codigo_postal: formData.get('codigo_postal'),
+                    nombre_contacto: formData.get('nombre_contacto'),
+                    telefono: formData.get('telefono'),
+                    correo: formData.get('correo'),
+                    cif_nif: formData.get('cif_nif'),
+                    tipo_carga: formData.get('tipo_carga'),
+                    sepa_documento: selectedFile.name
+                };
+
+                toggleLoadingState(true, submitButton);
+
+                try {
+                    // Envío de datos a la API
+                    const response = await fetch('/api/solicitudes/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            datos_comercial: clientData
+                        })
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        
+                        // Actualizamos el indicador de progreso
+                        document.querySelector('.step-active').classList.remove('step-active');
+                        document.querySelectorAll('.step')[1].classList.add('step-active');
+                        
+                        // Ocultamos el formulario y mostramos mensaje de éxito
+                        form.style.display = 'none';
+                        const successMessage = document.createElement('div');
+                        successMessage.className = 'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mt-4';
+                        successMessage.innerHTML = `
+                            <strong class="font-bold">¡Formulario enviado con éxito!</strong>
+                            <p class="block sm:inline">La solicitud ha sido enviada al Director Comercial para su revisión.</p>
+                        `;
+                        form.parentNode.appendChild(successMessage);
+                    } else {
+                        // Intentamos obtener el mensaje de error del servidor
+                        const errorData = await response.json().catch(() => ({}));
+                        const errorMessage = errorData.detail || 'Error al procesar la solicitud. Por favor, intente nuevamente.';
+                        showError(form, errorMessage);
+                    }
+                } catch (error) {
+                    showError(form, 'Error de conexión. Por favor, verifique su conexión a internet e intente nuevamente.');
+                } finally {
+                    toggleLoadingState(false, submitButton);
+                }
+            });
+
+            // Manejador para el botón Cancelar
+            const cancelButton = form.querySelector('button[type="button"]');
+            cancelButton.addEventListener('click', function() {
+                if (confirm('¿Está seguro que desea cancelar? Se perderán todos los datos ingresados.')) {
+                    form.reset();
+                    const fileInfo = document.getElementById('file-info');
+                    if (fileInfo) {
+                        fileInfo.textContent = '';
+                    }
+                    selectedFile = null;
+                }
+            });
+        });
+    </script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Encabezado con logo -->
+        <header class="bg-white shadow-sm">
+            <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+                <div class="flex items-center">
+                    <img src="https://svanelectro.com/wp-content/uploads/2022/02/logo-1.png" alt="SVAN Trading Logo" class="h-12">
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900">Sistema de Alta de Nuevos Clientes</h1>
+            </div>
+        </header>
+
+        <!-- Contenido Principal -->
+        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <!-- Indicador de Progreso -->
+            <div class="px-4 py-5 sm:p-6 bg-white shadow sm:rounded-lg mb-6">
+                <div class="flex justify-between mb-4">
+                    <div class="text-center flex-1">
+                        <div class="step step-active rounded-full w-10 h-10 flex items-center justify-center mx-auto mb-2">1</div>
+                        <p class="text-sm font-medium">Comercial</p>
+                    </div>
+                    <div class="text-center flex-1">
+                        <div class="step step-pending rounded-full w-10 h-10 flex items-center justify-center mx-auto mb-2">2</div>
+                        <p class="text-sm font-medium">Director Comercial</p>
+                    </div>
+                    <div class="text-center flex-1">
+                        <div class="step step-pending rounded-full w-10 h-10 flex items-center justify-center mx-auto mb-2">3</div>
+                        <p class="text-sm font-medium">Dep. Pedidos</p>
+                    </div>
+                    <div class="text-center flex-1">
+                        <div class="step step-pending rounded-full w-10 h-10 flex items-center justify-center mx-auto mb-2">4</div>
+                        <p class="text-sm font-medium">Administración</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contenedor del Formulario -->
+            <div class="bg-white shadow sm:rounded-lg">
+                <div class="px-4 py-5 sm:p-6">
+                    <h2 class="text-lg leading-6 font-medium text-gray-900 mb-4">Formulario de Alta de Cliente</h2>
+                    <p class="text-sm text-gray-500 mb-6">
+                        Complete todos los campos requeridos para iniciar el proceso de alta de un nuevo cliente.
+                        Los campos marcados con * son obligatorios.
+                    </p>
+
+                    <!-- Formulario -->
+                    <form id="clientForm" class="space-y-8">
+                        <!-- Información General -->
+                        <div class="space-y-6">
+                            <h3 class="text-lg font-medium text-gray-900">Información General</h3>
+                            <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
+                                <div>
+                                    <label for="nombre" class="block text-sm font-medium text-gray-700">
+                                        Nombre Empresa *
+                                    </label>
+                                    <input type="text" name="nombre" id="nombre" required
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="cif_nif" class="block text-sm font-medium text-gray-700">
+                                        CIF/NIF *
+                                    </label>
+                                    <input type="text" name="cif_nif" id="cif_nif" required
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Dirección y Contacto -->
+                        <div class="space-y-6">
+                            <h3 class="text-lg font-medium text-gray-900">Dirección y Contacto</h3>
+                            <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
+                                <div class="sm:col-span-2">
+                                    <label for="direccion" class="block text-sm font-medium text-gray-700">
+                                        Dirección *
+                                    </label>
+                                    <input type="text" name="direccion" id="direccion" required
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="poblacion" class="block text-sm font-medium text-gray-700">
+                                        Población *
+                                    </label>
+                                    <input type="text" name="poblacion" id="poblacion" required
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="codigo_postal" class="block text-sm font-medium text-gray-700">
+                                        Código Postal *
+                                    </label>
+                                    <input type="text" name="codigo_postal" id="codigo_postal" required
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="nombre_contacto" class="block text-sm font-medium text-gray-700">
+                                        Nombre Contacto *
+                                    </label>
+                                    <input type="text" name="nombre_contacto" id="nombre_contacto" required
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="telefono" class="block text-sm font-medium text-gray-700">
+                                        Teléfono *
+                                    </label>
+                                    <input type="tel" name="telefono" id="telefono" required
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label for="correo" class="block text-sm font-medium text-gray-700">
+                                        Correo Electrónico *
+                                    </label>
+                                    <input type="email" name="correo" id="correo" required
+                                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Configuración de Carga -->
+                        <div class="space-y-6">
+                            <h3 class="text-lg font-medium text-gray-900">Configuración de Carga</h3>
+                            <div>
+                                <label for="tipo_carga" class="block text-sm font-medium text-gray-700">
+                                    Tipo de Carga *
+                                </label>
+                                <select name="tipo_carga" id="tipo_carga" required
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="">Seleccione un tipo de carga</option>
+                                    <option value="COMP">COMP</option>
+                                    <option value="CROSS">CROSS</option>
+                                    <option value="GRUP">GRUP</option>
+                                    <option value="TTPRO">TTPRO</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Documentación -->
+                        <div class="space-y-6">
+                            <h3 class="text-lg font-medium text-gray-900">Documentación</h3>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">
+                                    Documento SEPA *
+                                </label>
+                                <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                                    <div class="space-y-1 text-center">
+                                        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                        </svg>
+                                        <div class="flex text-sm text-gray-600">
+                                            <label for="file-upload" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                                                <span>Subir archivo</span>
+                                                <input id="file-upload" name="file-upload" type="file" class="sr-only" required>
+                                            </label>
+                                            <p class="pl-1">o arrastrar y soltar</p>
+                                        </div>
+                                        <p class="text-xs text-gray-500">PDF hasta 10MB</p>
+                                        <!-- Elemento para mostrar el nombre del archivo seleccionado -->
+                                        <p id="file-info" class="text-sm text-gray-600 mt-2"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Botones de Acción -->
+                        <div class="pt-5">
+                            <div class="flex justify-end">
+                                <button type="button" 
+                                    class="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                    Cancelar
+                                </button>
+                                <button type="submit" 
+                                    class="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                    Guardar y Continuar
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+
+        <!-- Pie de página -->
+        <footer class="bg-white shadow-sm mt-8">
+            <div class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+                <p class="text-center text-sm text-gray-500">
+                    © 2024 SVAN Trading S.L. - Todos los derechos reservados
+                </p>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>
