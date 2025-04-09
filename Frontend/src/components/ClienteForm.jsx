@@ -70,35 +70,69 @@ const ClienteForm = () => {
         e.preventDefault();
         setIsLoading(true);
         setError(null);
-
+    
+        // Log para depuración
+        console.log("Datos del formulario a enviar:", formData);
+    
         // Crear un FormData para enviar los datos y el archivo
         const formDataToSend = new FormData();
         formDataToSend.append('nombre', formData.nombre);
         formDataToSend.append('direccion', formData.direccion);
         formDataToSend.append('poblacion', formData.poblacion);
         formDataToSend.append('codigoPostal', formData.codigoPostal);
-        formDataToSend.append('direccionEnvio', formData.direccionEnvio);
-        formDataToSend.append('poblacionEnvio', formData.poblacionEnvio);
-        formDataToSend.append('codigoPostalEnvio', formData.codigoPostalEnvio);
+        
+        // Campos opcionales de dirección de envío - usar string vacía si es null/undefined
+        formDataToSend.append('direccionEnvio', formData.direccionEnvio || '');
+        formDataToSend.append('poblacionEnvio', formData.poblacionEnvio || '');
+        formDataToSend.append('codigoPostalEnvio', formData.codigoPostalEnvio || '');
+        
         formDataToSend.append('nombreContacto', formData.nombreContacto);
         formDataToSend.append('telefono', formData.telefono);
         formDataToSend.append('correo', formData.correo);
         formDataToSend.append('cif_nif', formData.cif_nif);
         formDataToSend.append('tipoCarga', formData.tipoCarga);
         formDataToSend.append('metodoPago', formData.metodoPago);
-        formDataToSend.append('solicitudCredito', formData.solicitudCredito);
+        
+        // Convertir el valor numérico a string
+        formDataToSend.append('solicitudCredito', formData.solicitudCredito.toString());
+        
+        // Convertir booleano a string ('true' o 'false')
         formDataToSend.append('esAutonomo', formData.esAutonomo.toString());
+        
+        // Añadir el archivo SEPA si existe
         if (formData.documentos.sepa) {
             formDataToSend.append('sepa', formData.documentos.sepa);
         }
-
+    
         try {
-            await clienteAPI.crearSolicitud(formDataToSend);
+            // Usamos fetch directamente para tener más control
+            const response = await fetch('http://localhost:8000/api/solicitudes/', {
+                method: 'POST',
+                headers: {
+                    // No añadir 'Content-Type' - el navegador lo hará automáticamente con el límite correcto
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: formDataToSend
+            });
+    
+            // Para depuración: Ver qué recibimos como respuesta
+            console.log("Status de respuesta:", response.status);
+            
+            // Si hay error, intentamos obtener el mensaje
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error("Datos de error:", errorData);
+                throw new Error(errorData.detail || `Error ${response.status}: ${response.statusText}`);
+            }
+    
+            const data = await response.json();
+            console.log("Respuesta exitosa:", data);
+            
             alert('Solicitud creada con éxito');
             navigate('/dashboard');
         } catch (err) {
-            console.error('Error al crear solicitud:', err);
-            setError(err.response?.data?.detail || 'Error al crear la solicitud');
+            console.error('Error completo:', err);
+            setError(err.message || 'Error al crear la solicitud');
         } finally {
             setIsLoading(false);
         }

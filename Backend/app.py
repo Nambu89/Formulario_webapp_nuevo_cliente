@@ -45,7 +45,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 async def lifespan(app: FastAPI):
     """Manejador del ciclo de vida de la aplicación."""
     try:
-        init_db()
+        await init_db()
         if not verify_database_connection():
             raise Exception("No se pudo establecer la conexión inicial con la base de datos")
         logger.info("Inicialización de la aplicación completada")
@@ -141,12 +141,12 @@ async def crear_solicitud(
 
         nueva_solicitud = models.Solicitud(
             comercial_id=current_user.id,
-            datos_cliente=solicitud.dict(),
+            datos_cliente=json.dumps(solicitud.dict()),  # Convertir a string JSON
             estado=EstadoSolicitud.PENDIENTE_DIRECTOR,
             aprobado_director=False,
             aprobado_pedidos=False,
             aprobado_admin=False,
-            notas={}
+            notas=json.dumps({})  # Convertir a string JSON
         )
 
         db.add(nueva_solicitud)
