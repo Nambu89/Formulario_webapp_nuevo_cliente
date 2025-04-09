@@ -236,7 +236,7 @@ def obtener_solicitudes_pendientes_por_rol(
     try:
         logger.info(f"Obteniendo solicitudes pendientes para rol: {rol}")
         
-        if current_user.rol != rol and current_user.rol != 'admin':
+        if current_user.rol.value != rol and not current_user.rol.value == 'admin':
             logger.warning(f"El usuario {current_user.email} con rol {current_user.rol} intenta acceder a solicitudes de rol {rol}")
             raise HTTPException(
                 status_code=403,
