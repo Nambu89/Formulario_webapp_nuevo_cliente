@@ -1,10 +1,8 @@
 import axios from 'axios';
 
 const axiosInstance = axios.create({
-    baseURL: 'http://localhost:8000',  
-    headers: {
-        'Content-Type': 'application/json',
-    },
+    baseURL: 'http://localhost:8000',
+    // No establecer el Content-Type por defecto, dejarlo a Axios
     withCredentials: false // Mantenemos en false para evitar problemas CORS
 });
 
@@ -15,6 +13,13 @@ axiosInstance.interceptors.request.use(
         if (token) {
             config.headers['Authorization'] = `Bearer ${token}`;
         }
+        
+        // Importante: No sobreescribir el Content-Type si es FormData
+        if (config.data instanceof FormData) {
+            // Eliminar el Content-Type para que Axios lo establezca con el boundary correcto
+            delete config.headers['Content-Type'];
+        }
+        
         return config;
     },
     error => {
