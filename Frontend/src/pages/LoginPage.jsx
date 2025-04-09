@@ -24,9 +24,9 @@ const LoginPage = () => {
             const savedToken = localStorage.getItem('token');
             console.log('Token guardado:', savedToken ? 'Sí' : 'No');
             
-            if (response && response.user_role) {
+            if (response && response.user_rol) {
                 // Guardar la ruta por defecto
-                switch (response.user_role) {
+                switch (response.user_rol) {
                     case 'comercial':
                         localStorage.setItem('defaultRoute', '/nuevo-cliente');
                         break;
