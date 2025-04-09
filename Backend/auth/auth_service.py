@@ -66,7 +66,7 @@ class AuthService:
             return {
                 "access_token": access_token,
                 "token_type": "bearer",
-                "user_role": user.rol.value,
+                "user_rol": user.rol.value,
                 "user_email": user.email,
                 "user_name": user.nombre_completo,
                 "is_temporary_password": user.is_temporary_password  # Indicador de contraseña temporal

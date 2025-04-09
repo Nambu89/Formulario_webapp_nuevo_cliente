@@ -75,7 +75,7 @@ class UserResponse(BaseModel):
     id: str
     email: EmailStr
     nombre_completo: str
-    rol: UserRole
+    rol: str
     activo: bool
     ultimo_acceso: Optional[datetime] = None
     creado_en: datetime
@@ -83,6 +83,20 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @classmethod
+    def from_orm(cls, obj):
+        # Convierte manualmente los campos problemáticos
+        return cls(
+            id=str(obj.id),  # Convertir UUID a string
+            email=obj.email,
+            nombre_completo=obj.nombre_completo,
+            rol=obj.rol.value if hasattr(obj.rol, 'value') else str(obj.rol),  # Manejar Enum
+            activo=obj.activo,
+            ultimo_acceso=obj.ultimo_acceso,
+            creado_en=obj.creado_en,
+            is_temporary_password=obj.is_temporary_password
+        )
 
 class PasswordChange(BaseModel):
     current_password: str

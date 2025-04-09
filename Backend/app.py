@@ -75,7 +75,7 @@ app.add_middleware(
 
 # Dependencia para obtener el AuthService
 def get_auth_service(db: Session = Depends(get_db)):
-    return AuthService(db, AuthHandler())
+    return AuthService(db)
 
 # Endpoint para la creación de solicitudes
 @app.post('/api/solicitudes/', response_model=SolicitudResponse)

@@ -1,3 +1,4 @@
+// src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { clienteAPI } from '../services/api';
 
@@ -45,18 +46,30 @@ export const AuthProvider = ({ children }) => {
             
             const data = await response.json();
             console.log('Respuesta del servidor:', data);
-    
+            
             // Verificar que tenemos un token válido
             if (!data.access_token) {
                 throw new Error('No se recibió un token de acceso válido');
             }
+            
+            // Prueba para ver exactamente qué propiedades vienen del servidor
+            console.log('Propiedades exactas de la respuesta del servidor:');
+            for (let key in data) {
+                console.log(`- ${key}: ${data[key]}`);
+            }
     
             localStorage.setItem('token', data.access_token);
+            
+            // ¡IMPORTANTE! - Crear correctamente el objeto usuario
             const userData = {
                 email,
-                role: data.user_role,
-                name: data.user_name
+                // Usar exactamente el nombre que viene del servidor (probablemente user_role)
+                rol: data.user_role,
+                name: data.user_name,
+                is_temporary_password: data.is_temporary_password
             };
+            
+            console.log('Guardando objeto de usuario:', userData);
             localStorage.setItem('user', JSON.stringify(userData));
             setUser(userData);
     
