@@ -25,10 +25,32 @@ export const AuthProvider = ({ children }) => {
         setError(null);
         try {
             console.log('Intentando login con:', email);
-            const data = await clienteAPI.login(email, password);
             
+            // Usar fetch directamente para descartar problemas con axiosInstance
+            const formData = new URLSearchParams();
+            formData.append('username', email);
+            formData.append('password', password);
+            
+            const response = await fetch('http://localhost:8000/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Error al iniciar sesión: ${response.status}`);
+            }
+            
+            const data = await response.json();
             console.log('Respuesta del servidor:', data);
-
+    
+            // Verificar que tenemos un token válido
+            if (!data.access_token) {
+                throw new Error('No se recibió un token de acceso válido');
+            }
+    
             localStorage.setItem('token', data.access_token);
             const userData = {
                 email,
@@ -37,7 +59,7 @@ export const AuthProvider = ({ children }) => {
             };
             localStorage.setItem('user', JSON.stringify(userData));
             setUser(userData);
-
+    
             return data;
         } catch (err) {
             console.error('Error detallado:', err);
