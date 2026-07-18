@@ -16,17 +16,11 @@ const LoginPage = () => {
         setIsLoading(true);
     
         try {
-            console.log('Iniciando login...');
             const response = await login(email, password);
-            console.log('Respuesta login:', response);
-    
-            // Verificar que el token se guardó correctamente
-            const savedToken = localStorage.getItem('token');
-            console.log('Token guardado:', savedToken ? 'Sí' : 'No');
-            
-            if (response && response.user_rol) {
-                // Guardar la ruta por defecto
-                switch (response.user_rol) {
+            const userRole = response?.user_rol || response?.user_role;
+
+            if (response && userRole) {
+                switch (userRole) {
                     case 'comercial':
                         localStorage.setItem('defaultRoute', '/nuevo-cliente');
                         break;
@@ -39,14 +33,12 @@ const LoginPage = () => {
                     default:
                         localStorage.setItem('defaultRoute', '/home');
                 }
-                
-                // Usar window.location en lugar de navigate para forzar una recarga completa
+
                 window.location.href = '/dashboard';
             } else {
                 throw new Error('Respuesta inválida del servidor');
             }
         } catch (err) {
-            console.error('Error durante el login:', err);
             setError(err.message || 'Error de conexión con el servidor');
         } finally {
             setIsLoading(false);

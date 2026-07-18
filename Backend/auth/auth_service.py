@@ -10,7 +10,7 @@ import uuid
 from schemas import UserCreate, UserUpdate, UserResponse, PasswordChange
 
 # Configuración del logger
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class AuthService:
@@ -21,14 +21,9 @@ class AuthService:
     def authenticate_user(self, email: str, password: str):
         """Autentica un usuario."""
         try:
-            logger.debug(f"Iniciando autenticación para usuario: {email}")
-
-            # Buscar usuario
-            logger.debug("Ejecutando consulta para buscar usuario...")
             result = self.db.execute(
                 select(User).where(User.email == email)
             )
-            logger.debug(f"Resultado de la consulta: {result}")
             user = result.scalar_one_or_none()
 
             if not user:
@@ -38,10 +33,6 @@ class AuthService:
                     detail="Credenciales incorrectas"
                 )
 
-            logger.debug(f"Usuario encontrado: {user.email}")
-            logger.debug(f"Hash almacenado: {user.password_hash}")
-            logger.debug(f"Verificando contraseña...")
-
             # Verificar contraseña
             if not self.auth_handler.verify_password(password, user.password_hash):
                 logger.error("Verificación de contraseña fallida")
@@ -49,8 +40,6 @@ class AuthService:
                     status_code=401,
                     detail="Credenciales incorrectas"
                 )
-
-            logger.debug("Contraseña verificada correctamente")
 
             # Actualizar último acceso
             user.ultimo_acceso = datetime.utcnow()
@@ -61,12 +50,11 @@ class AuthService:
                 data={"sub": user.email, "rol": user.rol.value}
             )
 
-            logger.debug("Token de acceso generado correctamente")
-
             return {
                 "access_token": access_token,
                 "token_type": "bearer",
                 "user_rol": user.rol.value,
+                "user_role": user.rol.value,
                 "user_email": user.email,
                 "user_name": user.nombre_completo,
                 "is_temporary_password": user.is_temporary_password  # Indicador de contraseña temporal
@@ -83,8 +71,6 @@ class AuthService:
     def create_user(self, user: UserCreate):
         """Crea un nuevo usuario con una contraseña temporal."""
         try:
-            logger.debug(f"Creando usuario con email: {user.email}")
-
             # Verificar si el usuario ya existe
             existing_user = self.db.execute(
                 select(User).where(User.email == user.email)
@@ -115,7 +101,7 @@ class AuthService:
             self.db.commit()
             self.db.refresh(new_user)
 
-            logger.info(f"Usuario creado con éxito: {new_user.email}")
+            logger.info("Usuario creado con éxito: %s", new_user.email)
 
             return {
                 "user": UserResponse.from_orm(new_user),
@@ -134,8 +120,6 @@ class AuthService:
     def delete_user(self, user_id: str):
         """Elimina un usuario por su ID."""
         try:
-            logger.debug(f"Eliminando usuario con ID: {user_id}")
-
             user = self.db.execute(
                 select(User).where(User.id == user_id)
             ).scalar_one_or_none()
@@ -165,8 +149,6 @@ class AuthService:
     def update_user(self, user_id: str, user_update: UserUpdate):
         """Actualiza los datos de un usuario."""
         try:
-            logger.debug(f"Actualizando usuario con ID: {user_id}")
-
             user = self.db.execute(
                 select(User).where(User.id == user_id)
             ).scalar_one_or_none()
@@ -206,8 +188,6 @@ class AuthService:
     def get_all_users(self):
         """Obtiene todos los usuarios."""
         try:
-            logger.debug("Obteniendo todos los usuarios")
-
             result = self.db.execute(select(User))
             users = result.scalars().all()
 
@@ -224,8 +204,6 @@ class AuthService:
     def change_password(self, user: User, password_change: PasswordChange):
         """Permite a un usuario cambiar su contraseña."""
         try:
-            logger.debug(f"Cambiando contraseña para usuario: {user.email}")
-
             # Verificar la contraseña actual
             if not self.auth_handler.verify_password(password_change.current_password, user.password_hash):
                 logger.error("Contraseña actual incorrecta")

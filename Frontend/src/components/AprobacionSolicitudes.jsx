@@ -19,6 +19,7 @@ import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import { Badge } from './ui/badge';
 import { API_BASE_URL } from '../config';
+import { getUserRole } from '../utils/auth';
 
 // Selector de marcas
 // NOTE: These brand options are examples. Adjust them to match your business.
@@ -218,18 +219,18 @@ const AprobacionSolicitudes = () => {
     const [selectedMarcas, setSelectedMarcas] = useState([]);
     const [selectedTarifa, setSelectedTarifa] = useState('');
     const [selectedTerminoPago, setSelectedTerminoPago] = useState('');
+    const userRole = getUserRole(user);
 
     const fetchSolicitudes = useCallback(async () => {
-        if (!user || !user.role) {
+        if (!user || !userRole) {
             setError('Usuario no autenticado o rol no definido. Por favor, inicia sesión nuevamente.');
             setLoading(false);
             return;
         }
 
         try {
-            console.log(`Obteniendo solicitudes para rol: ${user.role}`);
             const response = await fetch(
-                `${API_BASE_URL}/api/solicitudes/pendientes/${user.role}`,
+                `${API_BASE_URL}/api/solicitudes/pendientes/${userRole}`,
                 {
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -241,15 +242,13 @@ const AprobacionSolicitudes = () => {
                 throw new Error(`Error al cargar solicitudes pendientes: ${errorText}`);
             }
             const data = await response.json();
-            console.log('Datos recibidos:', data);
             setSolicitudes(data || []);
         } catch (error) {
-            console.error('Error detallado:', error);
             setError(error.message);
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, userRole]);
 
     useEffect(() => {
         fetchSolicitudes();
@@ -276,8 +275,6 @@ const AprobacionSolicitudes = () => {
         }
         
         setDialogOpen(true);
-        console.log('Solicitud seleccionada:', solicitud);
-        console.log('Usuario actual rol:', user.role);
     };
 
     const handleConfirmar = async () => {
@@ -289,7 +286,7 @@ const AprobacionSolicitudes = () => {
             };
 
             // Validaciones y datos adicionales según el rol
-            if (user.role === 'director' && accion === 'aprobar') {
+            if (userRole === 'director' && accion === 'aprobar') {
                 if (selectedMarcas.length === 0) {
                     throw new Error('Debe seleccionar al menos una marca');
                 }
@@ -302,14 +299,13 @@ const AprobacionSolicitudes = () => {
             }
             
             // Añadir términos de pago para admin
-            if (user.role === 'admin' && accion === 'aprobar') {
+            if (userRole === 'admin' && accion === 'aprobar') {
                 if (!selectedTerminoPago) {
                     throw new Error('Debe seleccionar un término de pago');
                 }
                 datosAprobacion.termino_pago = selectedTerminoPago;
             }
 
-            console.log('Enviando datos:', datosAprobacion);
             const response = await fetch(`${API_BASE_URL}/api/solicitudes/${selectedSolicitud}/aprobar`, {
                 method: 'PUT',
                 headers: {
@@ -331,7 +327,6 @@ const AprobacionSolicitudes = () => {
             setSuccessMessage(`Solicitud ${accion === 'aprobar' ? 'aprobada' : 'rechazada'} correctamente`);
             setTimeout(() => setSuccessMessage(''), 3000); // Ocultar después de 3 segundos
         } catch (error) {
-            console.error('Error:', error);
             setError(error.message);
         } finally {
             setIsApproving(false);
@@ -360,8 +355,8 @@ const AprobacionSolicitudes = () => {
                 <Card>
                     <CardHeader>
                         <CardTitle>
-                            Solicitudes Pendientes de {user.role === 'director' ? 'Director' : 
-                                                     user.role === 'pedidos' ? 'Pedidos' : 
+                            Solicitudes Pendientes de {userRole === 'director' ? 'Director' : 
+                                                     userRole === 'pedidos' ? 'Pedidos' : 
                                                      'Administración'}
                         </CardTitle>
                     </CardHeader>
@@ -401,7 +396,7 @@ const AprobacionSolicitudes = () => {
                         </div>
                         
                         {/* Para roles de pedidos y admin, mostrar información de aprobaciones previas */}
-                        {(user.role === 'pedidos' || user.role === 'admin') && (
+                        {(userRole === 'pedidos' || userRole === 'admin') && (
                             <InfoAprobacionesPrevias solicitud={selectedSolicitudData} />
                         )}
                         
@@ -413,7 +408,7 @@ const AprobacionSolicitudes = () => {
                             
                             <div className="space-y-4">
                                 {/* Campos específicos para el Director */}
-                                {user.role === 'director' && accion === 'aprobar' && (
+                                {userRole === 'director' && accion === 'aprobar' && (
                                     <>
                                         <MarcasSelector 
                                             selectedMarcas={selectedMarcas} 
@@ -428,7 +423,7 @@ const AprobacionSolicitudes = () => {
                                 )}
 
                                 {/* Campos específicos para Admin */}
-                                {user.role === 'admin' && accion === 'aprobar' && (
+                                {userRole === 'admin' && accion === 'aprobar' && (
                                     <TerminosPagoSelector 
                                         selectedTermino={selectedTerminoPago} 
                                         onChange={setSelectedTerminoPago} 
@@ -490,14 +485,14 @@ const AprobacionSolicitudes = () => {
                                 Cancelar
                             </Button>
                             <Button
-                                onClick={handleConfirmar}
-                                disabled={
-                                    isApproving || 
-                                    (user.role === 'director' && accion === 'aprobar' && (selectedMarcas.length === 0 || !selectedTarifa)) || 
-                                    (user.role === 'admin' && accion === 'aprobar' && !selectedTerminoPago)
-                                }
-                                className={accion === 'aprobar' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-                            >
+                                    onClick={handleConfirmar}
+                                    disabled={
+                                        isApproving || 
+                                        (userRole === 'director' && accion === 'aprobar' && (selectedMarcas.length === 0 || !selectedTarifa)) || 
+                                        (userRole === 'admin' && accion === 'aprobar' && !selectedTerminoPago)
+                                    }
+                                    className={accion === 'aprobar' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+                                >
                                 {isApproving ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

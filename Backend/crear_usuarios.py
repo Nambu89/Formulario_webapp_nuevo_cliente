@@ -4,15 +4,26 @@ Script simple para crear usuarios de prueba
 
 import asyncio
 import uuid
+import os
 from sqlalchemy import text
 from database import init_db, AsyncSessionLocal
 from auth.auth_handler import AuthHandler
 from datetime import datetime
 
+
+def get_demo_password() -> str:
+    password = os.getenv("DEMO_USER_PASSWORD", "")
+    if not password:
+        raise ValueError(
+            "DEMO_USER_PASSWORD must be set before running crear_usuarios.py"
+        )
+    return password
+
 async def crear_usuarios():
     """Crear los usuarios de prueba"""
     async with AsyncSessionLocal() as db:
         auth_handler = AuthHandler()
+        demo_password = get_demo_password()
         
         # Lista de usuarios a crear
         usuarios = [
@@ -46,7 +57,7 @@ async def crear_usuarios():
             )
             
             if not result.scalar():
-                password_hash = auth_handler.get_password_hash('password123')
+                password_hash = auth_handler.get_password_hash(demo_password)
                 await db.execute(
                     text("""
                         INSERT INTO usuarios (id, email, password_hash, nombre_completo, rol, activo, creado_en)

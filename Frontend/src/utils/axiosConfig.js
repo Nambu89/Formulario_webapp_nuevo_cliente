@@ -23,7 +23,6 @@ axiosInstance.interceptors.request.use(
         return config;
     },
     error => {
-        console.error('Error en la configuración de la petición:', error);
         return Promise.reject(error);
     }
 );
@@ -32,31 +31,17 @@ axiosInstance.interceptors.request.use(
 axiosInstance.interceptors.response.use(
     response => response,
     error => {
-        // Información detallada del error para depuración
         if (error.response) {
-            console.error('Datos del error:', error.response.data);
-            console.error('Estado:', error.response.status);
-            console.error('Cabeceras:', error.response.headers);
-            
-            // Sesión expirada o token inválido
             if (error.response.status === 401) {
-                console.warn('Sesión expirada o no autorizado');
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
-                
-                // Solo redirigir si no estamos ya en login
+
                 if (window.location.pathname !== '/login') {
                     window.location.href = '/login';
                 }
             }
-        } else if (error.request) {
-            // La petición fue hecha pero no se recibió respuesta
-            console.error('No se recibió respuesta del servidor:', error.request);
-        } else {
-            // Error al configurar la petición
-            console.error('Error al configurar la petición:', error.message);
         }
-        
+
         return Promise.reject(error);
     }
 );

@@ -35,6 +35,10 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def get_user_role_value(user: User) -> str:
+    return user.rol.value if hasattr(user.rol, "value") else str(user.rol)
+
 # Obtén la ruta absoluta del directorio raíz del proyecto
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -79,6 +83,20 @@ app.add_middleware(
 # Dependencia para obtener el AuthService
 def get_auth_service(db: Session = Depends(get_db)):
     return AuthService(db)
+
+
+@app.get("/health")
+def health_check():
+    database_ok = verify_database_connection()
+    status_code = 200 if database_ok else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ok" if database_ok else "degraded",
+            "database": "ok" if database_ok else "unreachable",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+        },
+    )
 
 # Endpoint para la creación de solicitudes
 @app.post('/api/solicitudes/', response_model=SolicitudResponse)
@@ -138,8 +156,6 @@ async def crear_solicitud(
             "esAutonomo": esAutonomo,
             "documentos": documentos
         }
-        logger.info(f"Datos recibidos para crear solicitud: {solicitud_data}")
-
         solicitud = SolicitudCreate(**solicitud_data)
 
         nueva_solicitud = models.Solicitud(
@@ -170,7 +186,7 @@ async def crear_solicitud(
             "notas": nueva_solicitud.notas
         }
     except HTTPException as he:
-        logger.error(f"HTTPException: {he.detail}")
+        logger.warning("Solicitud rechazada: %s", he.detail)
         db.rollback()
         raise he
     except ValidationError as ve:
@@ -183,7 +199,7 @@ async def crear_solicitud(
         logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail=f"Error al crear la solicitud: {str(e)}"
+            detail="Error al crear la solicitud"
         )
 
 # Endpoint para subir documentos (generalizado)
@@ -237,10 +253,10 @@ def obtener_solicitudes_pendientes_por_rol(
 ):
     """Obtener solicitudes pendientes según el rol"""
     try:
-        logger.info(f"Obteniendo solicitudes pendientes para rol: {rol}")
-        
-        if current_user.rol.value != rol and not current_user.rol.value == 'admin':
-            logger.warning(f"El usuario {current_user.email} con rol {current_user.rol} intenta acceder a solicitudes de rol {rol}")
+        current_role = get_user_role_value(current_user)
+
+        if current_role != rol and current_role != 'admin':
+            logger.warning("Acceso denegado a pendientes para rol %s", rol)
             raise HTTPException(
                 status_code=403,
                 detail="No tiene permisos para ver estas solicitudes"
@@ -263,7 +279,7 @@ def obtener_solicitudes_pendientes_por_rol(
         )
         solicitudes = result.scalars().all()
         
-        logger.info(f"Encontradas {len(solicitudes)} solicitudes pendientes para el rol {rol}")
+        logger.info("Solicitudes pendientes consultadas para rol %s", rol)
         
         return [
             {
@@ -299,9 +315,8 @@ def aprobar_rechazar_solicitud(
 ):
     """Aprobar o rechazar una solicitud según el rol del usuario"""
     try:
-        logger.info(f"Aprobar/rechazar solicitud {solicitud_id} por {current_user.email} con rol {current_user.rol}")
-        logger.info(f"Datos recibidos: {datos}")
-        
+        current_role = get_user_role_value(current_user)
+
         result = db.execute(
             select(models.Solicitud).where(models.Solicitud.id == solicitud_id)
         )
@@ -313,19 +328,19 @@ def aprobar_rechazar_solicitud(
                 detail="Solicitud no encontrada"
             )
             
-        if (current_user.rol == 'director' and solicitud.estado != EstadoSolicitud.PENDIENTE_DIRECTOR) or \
-           (current_user.rol == 'pedidos' and solicitud.estado != EstadoSolicitud.PENDIENTE_PEDIDOS) or \
-           (current_user.rol == 'admin' and solicitud.estado != EstadoSolicitud.PENDIENTE_ADMIN):
+        if (current_role == 'director' and solicitud.estado != EstadoSolicitud.PENDIENTE_DIRECTOR) or \
+           (current_role == 'pedidos' and solicitud.estado != EstadoSolicitud.PENDIENTE_PEDIDOS) or \
+           (current_role == 'admin' and solicitud.estado != EstadoSolicitud.PENDIENTE_ADMIN):
             raise HTTPException(
                 status_code=400,
-                detail=f"Esta solicitud no está pendiente para el rol {current_user.rol}"
+                detail=f"Esta solicitud no está pendiente para el rol {current_role}"
             )
             
         aprobar = datos.get('aprobar', False)
         notas = datos.get('notas', '')
         
         if aprobar:
-            if current_user.rol == 'director':
+            if current_role == 'director':
                 marcas = datos.get('marcas', [])
                 tarifa = datos.get('tarifa', '')
                 if not marcas or not tarifa:
@@ -343,14 +358,14 @@ def aprobar_rechazar_solicitud(
                     solicitud.notas = {}
                 solicitud.notas['director'] = notas
                 
-            elif current_user.rol == 'pedidos':
+            elif current_role == 'pedidos':
                 solicitud.aprobado_pedidos = True
                 solicitud.estado = EstadoSolicitud.PENDIENTE_ADMIN
                 if not solicitud.notas:
                     solicitud.notas = {}
                 solicitud.notas['pedidos'] = notas
                 
-            elif current_user.rol == 'admin':
+            elif current_role == 'admin':
                 termino_pago = datos.get('termino_pago', '')
                 if not termino_pago:
                     raise HTTPException(
@@ -369,13 +384,13 @@ def aprobar_rechazar_solicitud(
             solicitud.estado = EstadoSolicitud.RECHAZADO
             if not solicitud.notas:
                 solicitud.notas = {}
-            solicitud.notas[current_user.rol] = notas
+            solicitud.notas[current_role] = notas
             
         solicitud.actualizado_en = datetime.utcnow()
         db.commit()
         db.refresh(solicitud)
         
-        logger.info(f"Solicitud {solicitud_id} actualizada con éxito. Nuevo estado: {solicitud.estado}")
+        logger.info("Solicitud %s actualizada correctamente", solicitud_id)
         
         return {
             "id": str(solicitud.id),
@@ -447,22 +462,20 @@ def obtener_solicitudes_usuario(
 ):
     """Obtener solicitudes creadas por un usuario comercial"""
     try:
-        logger.info(f"Obteniendo solicitudes para el usuario con email: {email}")
-        
         result_user = db.execute(
             select(User).where(User.email == email)
         )
         user = result_user.scalar_one_or_none()
         
         if not user:
-            logger.error(f"Usuario no encontrado: {email}")
+            logger.warning("Usuario no encontrado al consultar solicitudes")
             raise HTTPException(
                 status_code=404,
                 detail="Usuario no encontrado"
             )
             
-        if current_user.email != email and current_user.rol != 'admin':
-            logger.warning(f"El usuario {current_user.email} intenta acceder a solicitudes de {email}")
+        if current_user.email != email and get_user_role_value(current_user) != 'admin':
+            logger.warning("Acceso denegado a solicitudes de otro usuario")
             raise HTTPException(
                 status_code=403,
                 detail="No tiene permisos para ver estas solicitudes"
@@ -486,7 +499,7 @@ def obtener_solicitudes_usuario(
         )
         
         solicitudes = result.all()
-        logger.info(f"Encontradas {len(solicitudes)} solicitudes para el usuario {email}")
+        logger.info("Solicitudes consultadas para usuario %s", email)
         
         return [
             {
@@ -571,7 +584,7 @@ def get_all_users(
 ):
     """Obtiene todos los usuarios (solo para admins)"""
     try:
-        if current_user.rol != "admin":
+        if get_user_role_value(current_user) != "admin":
             raise HTTPException(
                 status_code=403,
                 detail="No tienes permiso para ver todos los usuarios"
@@ -595,7 +608,7 @@ def create_user(
 ):
     """Crea un nuevo usuario (solo para admins)"""
     try:
-        if current_user.rol != "admin":
+        if get_user_role_value(current_user) != "admin":
             raise HTTPException(
                 status_code=403,
                 detail="No tienes permiso para crear usuarios"
@@ -619,7 +632,7 @@ def delete_user(
 ):
     """Elimina un usuario (solo para admins)"""
     try:
-        if current_user.rol != "admin":
+        if get_user_role_value(current_user) != "admin":
             raise HTTPException(
                 status_code=403,
                 detail="No tienes permiso para eliminar usuarios"
@@ -644,7 +657,7 @@ def update_user(
 ):
     """Actualiza un usuario (solo para admins)"""
     try:
-        if current_user.rol != "admin":
+        if get_user_role_value(current_user) != "admin":
             raise HTTPException(
                 status_code=403,
                 detail="No tienes permiso para actualizar usuarios"
@@ -674,7 +687,7 @@ if __name__ == '__main__':
         host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "8000")),
         reload=True,
-        log_level="debug",
+        log_level=os.getenv("UVICORN_LOG_LEVEL", "info"),
         workers=1
     )
     server = uvicorn.Server(config)

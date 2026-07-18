@@ -71,10 +71,7 @@ const ClienteForm = () => {
         e.preventDefault();
         setIsLoading(true);
         setError(null);
-    
-        // Log para depuración
-        console.log("Datos del formulario a enviar:", formData);
-    
+
         // Crear un FormData para enviar los datos y el archivo
         const formDataToSend = new FormData();
         formDataToSend.append('nombre', formData.nombre);
@@ -116,23 +113,17 @@ const ClienteForm = () => {
                 body: formDataToSend
             });
     
-            // Para depuración: Ver qué recibimos como respuesta
-            console.log("Status de respuesta:", response.status);
-            
             // Si hay error, intentamos obtener el mensaje
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                console.error("Datos de error:", errorData);
                 throw new Error(errorData.detail || `Error ${response.status}: ${response.statusText}`);
             }
-    
-            const data = await response.json();
-            console.log("Respuesta exitosa:", data);
+
+            await response.json();
             
             alert('Solicitud creada con éxito');
             navigate('/dashboard');
         } catch (err) {
-            console.error('Error completo:', err);
             setError(err.message || 'Error al crear la solicitud');
         } finally {
             setIsLoading(false);
@@ -152,7 +143,7 @@ const ClienteForm = () => {
                         <div className="flex">
                             <div className="ml-3">
                                 <h3 className="text-sm font-medium text-red-800">
-                                    Error al crear la solicitud: {JSON.stringify(error)}
+                                    Error al crear la solicitud: {error}
                                 </h3>
                             </div>
                         </div>

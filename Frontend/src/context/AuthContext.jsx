@@ -1,7 +1,7 @@
 // src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { clienteAPI } from '../services/api';
 import { API_BASE_URL } from '../config';
+import { getUserRole } from '../utils/auth';
 
 const AuthContext = createContext(null);
 
@@ -26,9 +26,6 @@ export const AuthProvider = ({ children }) => {
         setIsLoading(true);
         setError(null);
         try {
-            console.log('Intentando login con:', email);
-            
-            // Usar fetch directamente para descartar problemas con axiosInstance
             const formData = new URLSearchParams();
             formData.append('username', email);
             formData.append('password', password);
@@ -46,37 +43,31 @@ export const AuthProvider = ({ children }) => {
             }
             
             const data = await response.json();
-            console.log('Respuesta del servidor:', data);
             
-            // Verificar que tenemos un token válido
             if (!data.access_token) {
                 throw new Error('No se recibió un token de acceso válido');
             }
-            
-            // Prueba para ver exactamente qué propiedades vienen del servidor
-            console.log('Propiedades exactas de la respuesta del servidor:');
-            for (let key in data) {
-                console.log(`- ${key}: ${data[key]}`);
-            }
-    
+
             localStorage.setItem('token', data.access_token);
-            
-            // ¡IMPORTANTE! - Crear correctamente el objeto usuario
+
+            const normalizedRole = getUserRole({
+                rol: data.user_rol,
+                role: data.user_role,
+            });
+
             const userData = {
                 email,
-                // Usar exactamente el nombre que viene del servidor (probablemente user_role)
-                rol: data.user_role,
+                rol: normalizedRole,
+                role: normalizedRole,
                 name: data.user_name,
                 is_temporary_password: data.is_temporary_password
             };
-            
-            console.log('Guardando objeto de usuario:', userData);
+
             localStorage.setItem('user', JSON.stringify(userData));
             setUser(userData);
-    
+
             return data;
         } catch (err) {
-            console.error('Error detallado:', err);
             setError(err.message || 'Error de conexión con el servidor');
             throw err;
         } finally {

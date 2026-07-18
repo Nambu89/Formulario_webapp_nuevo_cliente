@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const getEstadoColor = (estado) => {
-    switch (estado) {
+    switch (estado?.toLowerCase()) {
         case 'pendiente_director':
             return 'bg-yellow-100 text-yellow-800';
         case 'pendiente_pedidos':
@@ -22,7 +22,7 @@ const getEstadoColor = (estado) => {
 };
 
 const getEstadoTexto = (estado) => {
-    switch (estado) {
+    switch (estado?.toLowerCase()) {
         case 'pendiente_director':
             return 'Pendiente Director';
         case 'pendiente_pedidos':
@@ -39,7 +39,6 @@ const getEstadoTexto = (estado) => {
 };
 
 const SolicitudesTable = ({ solicitudes, onAprobar, onRechazar, showActions = false }) => {
-    console.log('Solicitudes recibidas en la tabla:', solicitudes); // Depuración
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">

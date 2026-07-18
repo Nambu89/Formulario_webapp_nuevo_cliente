@@ -11,7 +11,6 @@ const LoginForm = ({ onSubmit, error }) => {
         try {
             await onSubmit(email, password);
         } catch (err) {
-            console.error('Error en el formulario:', err);
         } finally {
             setIsLoading(false);
         }

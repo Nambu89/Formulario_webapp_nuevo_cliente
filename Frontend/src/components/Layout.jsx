@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getUserRole } from '../utils/auth';
 
 const Layout = ({ children }) => {
     const { user, logout } = useAuth();
@@ -11,13 +12,15 @@ const Layout = ({ children }) => {
         navigate('/login');
     };
 
-    // Función para obtener el nombre a mostrar según el rol
     const getDisplayName = () => {
-        if (user?.role === 'admin') return 'Responsable de Administración';
-        if (user?.role === 'pedidos') return 'Responsable de Pedidos';
-        if (user?.role === 'director') return 'Director Comercial';
+        const userRole = getUserRole(user);
+        if (userRole === 'admin') return 'Responsable de Administración';
+        if (userRole === 'pedidos') return 'Responsable de Pedidos';
+        if (userRole === 'director') return 'Director Comercial';
         return user?.name || '';
     };
+
+    const userRole = getUserRole(user);
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -43,7 +46,7 @@ const Layout = ({ children }) => {
                                 >
                                     Dashboard
                                 </Link>
-                                {user?.role === 'comercial' && (
+                                {userRole === 'comercial' && (
                                     <Link 
                                         to="/nuevo-cliente" 
                                         className="text-gray-600 hover:text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 border-transparent hover:border-blue-500"

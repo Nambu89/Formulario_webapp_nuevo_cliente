@@ -178,24 +178,29 @@ async def get_async_db():
 # ── Initialization ──────────────────────────────────────────────
 async def init_db():
     """
-    Create all tables and optionally seed a default admin user.
+    Create all tables and optionally seed an admin user.
 
     The seed admin credentials are read from environment variables:
-      SEED_ADMIN_EMAIL (default: admin@example.com)
-      SEED_ADMIN_PASSWORD (default: changeme123)
+      SEED_ADMIN_EMAIL (default: empty, disabled)
+      SEED_ADMIN_PASSWORD (default: empty)
       SEED_ADMIN_NAME (default: Administrator)
 
-    In production, set these to secure values or remove seeding entirely
-    by leaving SEED_ADMIN_EMAIL empty.
+    Seeding is disabled by default and must be enabled explicitly by setting
+    both SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.
     """
     try:
         Base.metadata.create_all(bind=engine)
 
-        seed_email = os.getenv("SEED_ADMIN_EMAIL", "admin@example.com")
-        seed_password = os.getenv("SEED_ADMIN_PASSWORD", "changeme123")
+        seed_email = os.getenv("SEED_ADMIN_EMAIL", "").strip()
+        seed_password = os.getenv("SEED_ADMIN_PASSWORD", "")
         seed_name = os.getenv("SEED_ADMIN_NAME", "Administrator")
 
         if seed_email:
+            if not seed_password:
+                raise ValueError(
+                    "SEED_ADMIN_PASSWORD must be set when SEED_ADMIN_EMAIL is provided"
+                )
+
             async with AsyncSessionLocal() as session:
                 from models import User, UserRole
                 from auth.auth_handler import AuthHandler
@@ -215,10 +220,13 @@ async def init_db():
                         activo=True,
                     )
                     session.add(nuevo_usuario)
-                    logger.info("Seed admin user created: %s", seed_email)
+                    logger.warning("Seed admin user created for bootstrap: %s", seed_email)
 
                 await session.commit()
-                logger.info("Database initialized successfully")
+        else:
+            logger.info("Admin bootstrap seed disabled")
+
+        logger.info("Database initialized successfully")
     except Exception as e:
         logger.error("Error initializing database: %s", e)
         raise

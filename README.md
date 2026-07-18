@@ -38,6 +38,7 @@ y diseñada para desplegarse en **Microsoft Azure**.
 - Customer onboarding form with document upload (SEPA mandates)
 - Dashboard with request status summary
 - User management (admin only)
+- Real `/health` endpoint for Azure probes
 - Configurable for Azure SQL, PostgreSQL, or SQL Server
 - Docker-ready multi-stage build
 
@@ -47,6 +48,7 @@ y diseñada para desplegarse en **Microsoft Azure**.
 - Formulario de alta de cliente con subida de documentos (mandatos SEPA)
 - Dashboard con resumen de estado de solicitudes
 - Gestión de usuarios (solo admin)
+- Endpoint real `/health` para sondas de Azure
 - Configurable para Azure SQL, PostgreSQL o SQL Server
 - Build multi-stage listo para Docker
 
@@ -75,6 +77,19 @@ y diseñada para desplegarse en **Microsoft Azure**.
 | Database | Azure SQL Database (default), PostgreSQL, or SQL Server |
 | Auth | JWT tokens (local), optional Microsoft Entra ID for DB auth |
 | Container | Docker multi-stage (Node 18 → Python 3.12-slim) |
+
+> **Diagram markers / Marcadores de diagramas:** use [`docs/diagrams/README.md`](docs/diagrams/README.md) as the canonical place to add the architecture, approval workflow, and deployment diagrams.
+
+For an Azure MVP, the repository is intended to run behind HTTPS with restricted
+CORS, health probes, and secrets injected via environment variables / Key Vault
+rather than hardcoded in code or seed scripts.
+
+Para un MVP en Azure, el repositorio está pensado para ejecutarse detrás de
+HTTPS con CORS restringido, sondas de salud y secretos inyectados por variables
+de entorno / Key Vault en lugar de hardcodeados en código o scripts de seed.
+
+Azure architecture diagram for the repository:
+- [docs/arquitectura_azure_mvp.md](docs/arquitectura_azure_mvp.md)
 
 ---
 
@@ -155,11 +170,29 @@ The app will open at `http://localhost:3000`.
 
 ```bash
 cd Backend
+set DEMO_USER_PASSWORD=replace-with-a-strong-demo-password
 python seed_demo_data.py
 ```
 
-This creates demo users (`comercial@example.com`, `director@example.com`,
-`pedidos@example.com`, `admin@example.com`) with password `password123`.
+This is for local demo environments only. The automatic admin bootstrap in
+`init_db()` is disabled by default and only runs if you explicitly set both
+`SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD`.
+
+Esto es solo para entornos locales de demostración. El bootstrap automático de
+admin en `init_db()` está desactivado por defecto y solo se ejecuta si defines
+explícitamente `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`.
+
+The demo scripts also require `DEMO_USER_PASSWORD`; no weak demo password is
+embedded in the repository.
+
+Los scripts de demo también requieren `DEMO_USER_PASSWORD`; el repositorio ya
+no incluye ninguna contraseña débil embebida.
+
+Health check for local/Azure probes:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
 
 ---
 
@@ -203,7 +236,9 @@ All configuration is via environment variables. See `Backend/.env.example` and
 | `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:3000,...` |
 | `HOST` | Bind address (use `127.0.0.1` locally) | `127.0.0.1` |
 | `PORT` | Backend port | `8000` |
-| `SEED_ADMIN_EMAIL` | Seed admin email (leave empty to skip) | `admin@example.com` |
+| `UVICORN_LOG_LEVEL` | Backend log level | `info` |
+| `SEED_ADMIN_EMAIL` | Optional admin bootstrap email (leave empty to disable) | *(empty)* |
+| `SEED_ADMIN_PASSWORD` | Password for the optional admin bootstrap | *(empty)* |
 | `REACT_APP_API_URL` | Backend URL for the frontend | `http://localhost:8000` |
 
 > **Logo:** Place your organization's logo as `Frontend/public/logo.png`.
@@ -337,6 +372,16 @@ az monitor app-insights component create \
 
 Set `APPLICATIONINSIGHTS_CONNECTION_STRING` as an app setting.
 
+### Health probes
+
+Configure the platform health probe against `GET /health`. The endpoint checks
+process readiness and database connectivity, and returns `503` if the database
+is unreachable.
+
+Configura la sonda de salud de la plataforma contra `GET /health`. El endpoint
+comprueba la disponibilidad del proceso y la conectividad con base de datos, y
+devuelve `503` si la base de datos no está accesible.
+
 ### Authentication: Microsoft Entra ID (optional)
 
 **English:** The application uses local JWT authentication by default. To
@@ -402,9 +447,15 @@ Entra ID para conectar a Azure SQL.
   committed secrets in the past, rotate them immediately.
 - The JWT secret must be a strong random string. The app will refuse to
   start without `JWT_SECRET_KEY` set.
+- Default admin seeding is disabled. If you enable bootstrap users, provide the
+  credentials through environment variables and rotate them after first use.
 - CORS origins should be restricted to your frontend URL(s) in production.
 - Use HTTPS in production (Azure App Service / Container Apps provide this
   automatically).
+- Frontend and backend debug logging was reduced to avoid leaking tokens,
+  password hashes, temporary passwords, or full request payloads.
+- Temporary passwords should be delivered through an out-of-band admin process
+  and changed on first login.
 - Consider replacing local JWT auth with Microsoft Entra ID for enterprise
   deployments.
 
@@ -413,10 +464,17 @@ Entra ID para conectar a Azure SQL.
   accidentalmente subiste secretos en el pasado, rótalos inmediatamente.
 - El secreto JWT debe ser una cadena aleatoria fuerte. La aplicación no
   arrancará sin `JWT_SECRET_KEY` configurado.
+- El seed de administrador por defecto está desactivado. Si habilitas usuarios
+  bootstrap, pasa las credenciales por variables de entorno y rótalas tras el
+  primer uso.
 - Los orígenes CORS deben restringirse a la(s) URL(s) de tu frontend en
   producción.
 - Usa HTTPS en producción (Azure App Service / Container Apps lo proporcionan
   automáticamente).
+- El logging de frontend y backend se ha reducido para evitar fugas de tokens,
+  hashes de contraseña, contraseñas temporales o payloads completos.
+- Las contraseñas temporales deben entregarse por un canal administrativo
+  separado y cambiarse en el primer acceso.
 - Considera reemplazar la autenticación JWT local con Microsoft Entra ID
   para despliegues empresariales.
 

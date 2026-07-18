@@ -5,17 +5,19 @@ import SolicitudesTable from '../components/SolicitudesTable';
 import { Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { API_BASE_URL } from '../config';
+import { getUserRole } from '../utils/auth';
 
 const MisSolicitudes = () => {
     const { user } = useAuth();
     const [solicitudes, setSolicitudes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const userRole = getUserRole(user);
 
     useEffect(() => {
         const fetchSolicitudes = async () => {
             try {
-                if (user.role === 'director') {
+                if (userRole === 'director') {
                     const pendientesData = await fetch(`${API_BASE_URL}/api/solicitudes/pendientes/director`, {
                         headers: {
                             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -35,15 +37,16 @@ const MisSolicitudes = () => {
                     setSolicitudes(data);
                 }
             } catch (error) {
-                console.error('Error:', error);
                 setError('Error al cargar las solicitudes. Verifica tu conexión o contacta al administrador.');
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchSolicitudes();
-    }, [user]);
+        if (user) {
+            fetchSolicitudes();
+        }
+    }, [user, userRole]);
 
     if (loading) {
         return (

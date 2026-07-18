@@ -6,6 +6,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Loader2, Plus, ClipboardList, CheckSquare, Users, List } from 'lucide-react';
 import { API_BASE_URL } from '../config';
+import { getUserRole } from '../utils/auth';
 
 const Dashboard = () => {
     const { user } = useAuth();
@@ -17,6 +18,7 @@ const Dashboard = () => {
     });
     const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
     const [loading, setLoading] = useState(true);
+    const userRole = getUserRole(user);
 
     useEffect(() => {
         const fetchResumen = async () => {
@@ -32,9 +34,9 @@ const Dashboard = () => {
                 setResumen(data);
                 
                 // Para obtener el conteo específico de solicitudes pendientes según el rol
-                if (user.role === 'director' || user.role === 'pedidos' || user.role === 'admin') {
+                if (userRole === 'director' || userRole === 'pedidos' || userRole === 'admin') {
                     const pendientesResponse = await fetch(
-                        `${API_BASE_URL}/api/solicitudes/pendientes/${user.role}`,
+                        `${API_BASE_URL}/api/solicitudes/pendientes/${userRole}`,
                         {
                             headers: {
                                 'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -47,14 +49,14 @@ const Dashboard = () => {
                     }
                 }
             } catch (error) {
-                console.error('Error:', error);
+                setSolicitudesPendientes(0);
             } finally {
                 setLoading(false);
             }
         };
 
         fetchResumen();
-    }, [user]);
+    }, [user, userRole]);
 
     if (loading) {
         return (
@@ -67,9 +69,9 @@ const Dashboard = () => {
     }
 
     const getDisplayName = () => {
-        if (user?.role === 'admin') return 'Responsable de Administración';
-        if (user?.role === 'pedidos') return 'Responsable de Pedidos';
-        if (user?.role === 'director') return 'Director Comercial';
+        if (userRole === 'admin') return 'Responsable de Administración';
+        if (userRole === 'pedidos') return 'Responsable de Pedidos';
+        if (userRole === 'director') return 'Director Comercial';
         return user?.name || '';
     };
 
@@ -88,7 +90,7 @@ const Dashboard = () => {
                                 Solicitudes Pendientes
                             </h3>
                             <p className="text-3xl font-bold text-blue-900">
-                                {user.role === 'director' || user.role === 'pedidos' || user.role === 'admin' 
+                                {userRole === 'director' || userRole === 'pedidos' || userRole === 'admin' 
                                     ? solicitudesPendientes 
                                     : resumen.pendientes}
                             </p>
@@ -137,7 +139,7 @@ const Dashboard = () => {
                     </Button>
 
                     {/* Aprobación de Solicitudes - visible para roles específicos */}
-                    {user?.role === 'director' && (
+                    {userRole === 'director' && (
                         <Button
                             onClick={() => navigate('/aprobacion-solicitudes')}
                             className="w-full bg-green-600 hover:bg-green-700"
@@ -147,7 +149,7 @@ const Dashboard = () => {
                         </Button>
                     )}
 
-                    {user?.role === 'pedidos' && (
+                    {userRole === 'pedidos' && (
                         <Button
                             onClick={() => navigate('/aprobacion-solicitudes')}
                             className="w-full bg-green-600 hover:bg-green-700"
@@ -157,7 +159,7 @@ const Dashboard = () => {
                         </Button>
                     )}
 
-                    {user?.role === 'admin' && (
+                    {userRole === 'admin' && (
                         <>
                             <Button
                                 onClick={() => navigate('/aprobacion-solicitudes')}

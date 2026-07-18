@@ -18,6 +18,15 @@ from sqlalchemy import text
 from auth.auth_handler import AuthHandler
 from database import init_db, AsyncSessionLocal
 
+
+def get_demo_password() -> str:
+    password = os.getenv("DEMO_USER_PASSWORD", "")
+    if not password:
+        raise ValueError(
+            "DEMO_USER_PASSWORD must be set before running seed_demo_data.py"
+        )
+    return password
+
 # Datos de ejemplo para clientes
 CLIENTES_EJEMPLO = [
     {
@@ -117,10 +126,12 @@ async def crear_datos_ejemplo():
 
 async def crear_usuarios(db):
     """Crear usuarios de ejemplo"""
+    demo_password = get_demo_password()
+
     # Comprobar y crear usuario director
     if not await usuario_existe(db, 'director@example.com'):
         auth_handler = AuthHandler()
-        password_hash = auth_handler.get_password_hash('password123')
+        password_hash = auth_handler.get_password_hash(demo_password)
         
         await db.execute(
             text("""
@@ -142,7 +153,7 @@ async def crear_usuarios(db):
     # Comprobar y crear usuario pedidos
     if not await usuario_existe(db, 'pedidos@example.com'):
         auth_handler = AuthHandler()
-        password_hash = auth_handler.get_password_hash('password123')
+        password_hash = auth_handler.get_password_hash(demo_password)
         
         await db.execute(
             text("""
@@ -164,7 +175,7 @@ async def crear_usuarios(db):
     # Comprobar y crear usuario comercial
     if not await usuario_existe(db, 'comercial@example.com'):
         auth_handler = AuthHandler()
-        password_hash = auth_handler.get_password_hash('password123')
+        password_hash = auth_handler.get_password_hash(demo_password)
         
         await db.execute(
             text("""
