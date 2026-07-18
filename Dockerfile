@@ -1,36 +1,31 @@
-# Primera etapa: Construir el frontend
-FROM node:18-alpine as frontend-builder
+# ─────────────────────────────────────────────────────────────
+# Multi-stage Dockerfile for the Customer Onboarding web app.
+# Stage 1: build the React frontend.
+# Stage 2: Python backend serving the built frontend as static files.
+# ─────────────────────────────────────────────────────────────
 
-# Establecemos el directorio de trabajo para el frontend
+# ── Stage 1: Frontend build ──────────────────────────────────
+FROM node:18-alpine AS frontend-builder
+
 WORKDIR /frontend
 
-# Copiamos los archivos de configuración del frontend
-# Primero solo package.json y package-lock.json para aprovechar la caché de Docker
+# Copy package files first to leverage Docker layer caching
 COPY Frontend/package*.json ./
-
-# Instalamos las dependencias del frontend
 RUN npm install
 
-# Copiamos todo el código fuente del frontend
-# Esto incluye src/, public/ y otros archivos de configuración
+# Copy the rest of the frontend source and build
 COPY Frontend/ .
-
-# Construimos la aplicación React
-# Esto generará la carpeta build/ con los archivos estáticos optimizados
 RUN npm run build
 
-# Segunda etapa: Configurar el backend y combinar con el frontend
+# ── Stage 2: Backend + static frontend ───────────────────────
 FROM python:3.12-slim
 
-# Configuración de Python para optimizar su uso en Docker
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Establecemos el directorio de trabajo para la aplicación
 WORKDIR /app
 
-# Instalamos las dependencias del sistema necesarias
-# Incluimos todas las herramientas necesarias para compilar las dependencias de Python
+# System dependencies for building Python packages and ODBC
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -38,36 +33,42 @@ RUN apt-get update && \
         libpq-dev \
         gcc \
         curl \
+        gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Actualizamos pip e instalamos wheel
+# Install Microsoft ODBC Driver 18 for SQL Server (needed for Azure SQL)
+# Skip this block if you use PostgreSQL — it adds ~150 MB to the image.
+RUN curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft-prod.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list && \
+    apt-get update && \
+    ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir wheel
+    pip install --no-cache-dir -r requirements.txt
 
-# Copiamos e instalamos los requisitos de Python
-COPY Backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the entire backend directory (app.py, database.py, models.py,
+# schemas.py, auth/, services/, etc.)
+COPY Backend/ ./Backend/
 
-# Copiamos el código del backend
-COPY Backend/app.py .
-
-# Creamos el directorio static y copiamos los archivos compilados del frontend
-# Este paso es crucial para servir los archivos estáticos desde FastAPI
+# Copy the compiled frontend into the static directory
 RUN mkdir -p static
 COPY --from=frontend-builder /frontend/build/ ./static/
-
-# Aseguramos que los permisos sean correctos
 RUN chmod -R 755 /app/static
 
-# Exponemos el puerto que usará FastAPI
-# Este es el puerto que deberá mapearse al ejecutar el contenedor
+# Create uploads directory (app.py also creates it at startup, but this
+# ensures the volume mount point exists)
+RUN mkdir -p Backend/uploads/documents
+
 EXPOSE 8000
 
-# Variables de entorno adicionales para producción
-ENV PORT=8000
 ENV HOST=0.0.0.0
+ENV PORT=8000
 ENV ENVIRONMENT=production
 
-# Comando para iniciar la aplicación
-# Usamos uvicorn con configuraciones optimizadas para producción
+# Run from the Backend directory so that imports (database, models, auth, ...)
+# resolve correctly
+WORKDIR /app/Backend
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers"]

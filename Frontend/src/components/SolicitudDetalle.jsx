@@ -2,6 +2,7 @@ import React from 'react';
 import { Badge } from './ui/badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { API_BASE_URL } from '../config';
 
 const getEstadoColor = (estado) => {
     switch (estado) {
@@ -148,7 +149,7 @@ const SolicitudDetalle = ({ solicitud }) => {
                             <p className="text-sm text-gray-500">Documento SEPA</p>
                             {datosCliente.sepa_documento ? (
                                 <a 
-                                    href={`http://localhost:8000${datosCliente.sepa_documento}`} 
+                                    href={`${API_BASE_URL}${datosCliente.sepa_documento}`} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     className="text-blue-600 hover:underline"

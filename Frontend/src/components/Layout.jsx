@@ -31,7 +31,7 @@ const Layout = ({ children }) => {
                                 <img
                                     className="h-8 w-auto"
                                     src="/logo.png"
-                                    alt="SVAN Logo"
+                                    alt="Logo"
                                 />
                             </div>
                             

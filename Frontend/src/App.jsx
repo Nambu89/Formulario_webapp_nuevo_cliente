@@ -9,6 +9,7 @@ import ManageUsers from './pages/ManageUsers';
 import PerfilUsuario from './pages/PerfilUsuario';
 import ClienteForm from './components/ClienteForm';
 import { useAuth } from './context/AuthContext';
+import { API_BASE_URL } from './config';
 
 // Componente interno que usa los hooks correctamente
 const AppContent = () => {
@@ -76,7 +77,7 @@ const AppContent = () => {
             // Intentar recuperar datos del servidor
             const token = localStorage.getItem('token');
             if (token) {
-                fetch('http://localhost:8000/users/me', {
+                fetch(`${API_BASE_URL}/users/me`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -101,15 +102,13 @@ const AppContent = () => {
         const userRole = user?.rol || user?.role;
 
         // Mostrar menús adaptados al rol
-        // El admin ve todo, si eres tú como informático y propietario debes tener acceso a todo
-        const isAdminOrOwner = userRole === 'admin' || userRole === 'informatico' || 
-                               user?.email === 'fernando.prada@svanelectro.com';
+        const isAdminOrOwner = userRole === 'admin' || userRole === 'informatico';
 
         return (
             <nav className="bg-gray-800 p-4">
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
                     <div className="flex items-center">
-                        <img src="/svan-logo.png" alt="SVAN Logo" className="h-8 mr-4" />
+                        <img src="/logo.png" alt="Logo" className="h-8 mr-4" />
                         <Link to="/dashboard" className="text-white hover:text-gray-300 mr-4">Dashboard</Link>
                         <Link to="/mis-solicitudes" className="text-white hover:text-gray-300 mr-4">Mis Solicitudes</Link>
                         

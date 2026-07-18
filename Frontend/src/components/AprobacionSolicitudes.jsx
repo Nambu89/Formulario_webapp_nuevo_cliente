@@ -18,14 +18,16 @@ import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
 import { Badge } from './ui/badge';
+import { API_BASE_URL } from '../config';
 
 // Selector de marcas
+// NOTE: These brand options are examples. Adjust them to match your business.
 const MarcasSelector = ({ selectedMarcas, onChange }) => {
     const marcas = [
-        { id: 'SV', label: 'SVAN (SV)' },
-        { id: 'WD', label: 'Wonder (WD)' },
-        { id: 'AS', label: 'Aspes (AS)' },
-        { id: 'HY', label: 'Hyundai (HY)' }
+        { id: 'BRAND_A', label: 'Brand A' },
+        { id: 'BRAND_B', label: 'Brand B' },
+        { id: 'BRAND_C', label: 'Brand C' },
+        { id: 'BRAND_D', label: 'Brand D' }
     ];
 
     const handleMarcaChange = (marcaId) => {
@@ -227,7 +229,7 @@ const AprobacionSolicitudes = () => {
         try {
             console.log(`Obteniendo solicitudes para rol: ${user.role}`);
             const response = await fetch(
-                `http://localhost:8000/api/solicitudes/pendientes/${user.role}`,
+                `${API_BASE_URL}/api/solicitudes/pendientes/${user.role}`,
                 {
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -308,7 +310,7 @@ const AprobacionSolicitudes = () => {
             }
 
             console.log('Enviando datos:', datosAprobacion);
-            const response = await fetch(`http://localhost:8000/api/solicitudes/${selectedSolicitud}/aprobar`, {
+            const response = await fetch(`${API_BASE_URL}/api/solicitudes/${selectedSolicitud}/aprobar`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -441,7 +443,7 @@ const AprobacionSolicitudes = () => {
                                         {selectedSolicitudData?.datos_comercial?.sepa_documento ? (
                                             <div className="p-3 bg-gray-50 rounded-md">
                                                 <a 
-                                                    href={`http://localhost:8000${selectedSolicitudData.datos_comercial.sepa_documento}`} 
+                                                    href={`${API_BASE_URL}${selectedSolicitudData.datos_comercial.sepa_documento}`} 
                                                     target="_blank" 
                                                     rel="noopener noreferrer"
                                                     className="text-blue-600 hover:underline flex items-center"

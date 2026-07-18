@@ -15,10 +15,18 @@ logger = logging.getLogger(__name__)
 
 class AuthHandler:
     def __init__(self):
-        # En producción, usar variables de entorno
-        self.secret_key = os.getenv('JWT_SECRET_KEY', 'tu_clave_secreta_muy_segura_y_larga')
-        self.algorithm = 'HS256'
-        self.access_token_expire_minutes = 30
+        # JWT secret MUST come from an environment variable.
+        # Generate one with:  python -c "import secrets; print(secrets.token_urlsafe(48))"
+        self.secret_key = os.getenv("JWT_SECRET_KEY")
+        if not self.secret_key:
+            raise ValueError(
+                "JWT_SECRET_KEY environment variable is not set. "
+                "Generate a strong secret and add it to your .env file."
+            )
+        self.algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+        self.access_token_expire_minutes = int(
+            os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
+        )
         self.pwd_context = CryptContext(
             schemes=["bcrypt"],
             deprecated="auto",

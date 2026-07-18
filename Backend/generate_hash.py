@@ -1,15 +1,26 @@
+"""
+Utility to generate a bcrypt password hash.
+
+Usage:
+    python generate_hash.py <password>
+
+Or without arguments, it will prompt for a password interactively.
+"""
+
+import sys
 from passlib.context import CryptContext
 
-# Configuración del contexto de hash (igual que en auth_handler.py)
 pwd_context = CryptContext(
     schemes=["bcrypt"],
     deprecated="auto",
-    bcrypt__rounds=12
+    bcrypt__rounds=12,
 )
 
-# Contraseña que estás usando en el frontend
-password = "contraseña123"
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        password = sys.argv[1]
+    else:
+        password = input("Enter password to hash: ")
 
-# Genera el hash de la contraseña
-password_hash = pwd_context.hash(password)
-print(f"Hash de la contraseña '{password}': {password_hash}")
+    password_hash = pwd_context.hash(password)
+    print(f"Hash: {password_hash}")

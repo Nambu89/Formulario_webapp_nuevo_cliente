@@ -1,6 +1,6 @@
 {
-    "short_name": "SVAN Clientes",
-    "name": "Sistema de Alta de Nuevos Clientes",
+    "short_name": "Onboarding",
+    "name": "Customer Onboarding & Request Approval System",
     "icons": [
       {
         "src": "favicon.ico",

@@ -59,8 +59,8 @@ const LoginPage = () => {
                 <div>
                     <img
                         className="mx-auto h-12 w-auto"
-                        src="https://svanelectro.com/wp-content/uploads/2022/02/logo-1.png" // Usa la URL externa
-                        alt="SVAN Trading Logo"
+                        src="/logo.png"
+                        alt="Logo"
                     />
                     <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
                         Iniciar Sesión

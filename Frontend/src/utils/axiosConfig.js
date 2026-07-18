@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const axiosInstance = axios.create({
-    baseURL: 'http://localhost:8000',
+    baseURL: process.env.REACT_APP_API_URL || '',
     // No establecer el Content-Type por defecto, dejarlo a Axios
     withCredentials: false // Mantenemos en false para evitar problemas CORS
 });

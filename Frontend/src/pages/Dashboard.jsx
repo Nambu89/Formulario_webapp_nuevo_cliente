@@ -5,6 +5,7 @@ import Layout from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Loader2, Plus, ClipboardList, CheckSquare, Users, List } from 'lucide-react';
+import { API_BASE_URL } from '../config';
 
 const Dashboard = () => {
     const { user } = useAuth();
@@ -21,7 +22,7 @@ const Dashboard = () => {
         const fetchResumen = async () => {
             try {
                 // Para obtener el resumen general
-                const response = await fetch('http://localhost:8000/api/solicitudes/resumen', {
+                const response = await fetch(`${API_BASE_URL}/api/solicitudes/resumen`, {
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('token')}`
                     }
@@ -33,7 +34,7 @@ const Dashboard = () => {
                 // Para obtener el conteo específico de solicitudes pendientes según el rol
                 if (user.role === 'director' || user.role === 'pedidos' || user.role === 'admin') {
                     const pendientesResponse = await fetch(
-                        `http://localhost:8000/api/solicitudes/pendientes/${user.role}`,
+                        `${API_BASE_URL}/api/solicitudes/pendientes/${user.role}`,
                         {
                             headers: {
                                 'Authorization': `Bearer ${localStorage.getItem('token')}`

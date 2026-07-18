@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { clienteAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from '../config';
 
 const ClienteForm = () => {
     const [formData, setFormData] = useState({
@@ -106,7 +107,7 @@ const ClienteForm = () => {
     
         try {
             // Usamos fetch directamente para tener más control
-            const response = await fetch('http://localhost:8000/api/solicitudes/', {
+            const response = await fetch(`${API_BASE_URL}/api/solicitudes/`, {
                 method: 'POST',
                 headers: {
                     // No añadir 'Content-Type' - el navegador lo hará automáticamente con el límite correcto

@@ -1,198 +1,232 @@
+"""
+Database configuration module.
+
+All connection parameters are read from environment variables (see .env.example).
+Supports two authentication modes for Azure SQL:
+
+1. **Connection-string mode** (default): the ``DATABASE_URL`` env var contains
+   the full SQLAlchemy URL, optionally with embedded credentials
+   (``user:password@host``). Works with any database backend.
+
+2. **Entra ID service-principal mode**: set ``AZURE_CLIENT_ID``,
+   ``AZURE_TENANT_ID`` and ``AZURE_CLIENT_SECRET``. The module acquires an
+   Azure AD token via MSAL and injects it into the ODBC connection string.
+   ``DATABASE_URL`` should still point at the server/database (credentials
+   are not needed in the URL in this mode).
+"""
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from dotenv import load_dotenv
+from urllib.parse import quote_plus
 import os
 import logging
 import msal
 import time
 import asyncio
 
-# Configuración del logger
-logging.basicConfig(level=logging.DEBUG)
+# Configuration
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Cargamos las variables de entorno
+# Load environment variables from .env
 load_dotenv()
 
-# Configuración de Microsoft Entra ID
-CLIENT_ID = os.getenv("AZURE_CLIENT_ID")
-CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET")
-TENANT_ID = os.getenv("AZURE_TENANT_ID")
+# ── Entra ID (optional) ──────────────────────────────────────────
+CLIENT_ID = os.getenv("AZURE_CLIENT_ID", "")
+CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET", "")
+TENANT_ID = os.getenv("AZURE_TENANT_ID", "")
 
-if not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
-    raise ValueError("Faltan variables de entorno: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID")
+USE_ENTRA_AUTH = bool(CLIENT_ID and CLIENT_SECRET and TENANT_ID)
 
-# Función para obtener el token de acceso
-def get_access_token():
+
+def get_access_token() -> str:
+    """Acquire an Azure AD access token for the database resource."""
     authority = f"https://login.microsoftonline.com/{TENANT_ID}"
     app = msal.ConfidentialClientApplication(
         CLIENT_ID,
         authority=authority,
-        client_credential=CLIENT_SECRET
+        client_credential=CLIENT_SECRET,
     )
     scope = ["https://database.windows.net/.default"]
     result = app.acquire_token_for_client(scopes=scope)
 
     if "access_token" not in result:
-        error_description = result.get("error_description", "No se proporcionó descripción del error")
-        logger.error(f"Error al obtener el token de acceso: {error_description}")
-        raise ValueError(f"Error al obtener el token de acceso: {error_description}")
+        error_description = result.get(
+            "error_description", "No error description provided"
+        )
+        logger.error("Failed to acquire access token: %s", error_description)
+        raise ValueError(f"Failed to acquire access token: {error_description}")
 
-    logger.info("Token de acceso obtenido correctamente")
+    logger.info("Access token acquired successfully")
     return result["access_token"]
 
-# Obtener token inicial
-access_token = get_access_token()
 
-# Configuración de la conexión con autenticación de Microsoft Entra ID
-conn_str = (
-    "DRIVER={ODBC Driver 18 for SQL Server};"
-    "SERVER=nuevosclientes.database.windows.net;"
-    "DATABASE=registroclientes;"
-    "Authentication=ActiveDirectoryServicePrincipal;"
-    "Encrypt=yes;"
-    f"UID={CLIENT_ID};"
-    f"PWD={CLIENT_SECRET};"
-    f"AccessToken={access_token}"
-)
+# ── Build the SQLAlchemy URLs ────────────────────────────────────
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-# URLs de la base de datos para SQLAlchemy
-SYNC_DATABASE_URL = f"mssql+pyodbc:///?odbc_connect={conn_str}"
-ASYNC_DATABASE_URL = f"mssql+aioodbc:///?odbc_connect={conn_str}"
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is not set. "
+        "Copy Backend/.env.example to Backend/.env and configure it."
+    )
 
-logger.info(f"Usando URL de base de datos: {SYNC_DATABASE_URL}")
+if USE_ENTRA_AUTH:
+    # Entra ID service-principal mode: build an ODBC connection string
+    # with the acquired token. DATABASE_URL is expected to be an
+    # aioodbc URL whose query portion contains the server/database.
+    access_token = get_access_token()
+    conn_str = (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER={os.getenv('DB_SERVER', '')};"
+        f"DATABASE={os.getenv('DB_NAME', '')};"
+        "Authentication=ActiveDirectoryServicePrincipal;"
+        "Encrypt=yes;"
+        f"UID={CLIENT_ID};"
+        f"PWD={CLIENT_SECRET};"
+        f"AccessToken={access_token}"
+    )
+    encoded = quote_plus(conn_str)
+    SYNC_DATABASE_URL = f"mssql+pyodbc:///?odbc_connect={encoded}"
+    ASYNC_DATABASE_URL = f"mssql+aioodbc:///?odbc_connect={encoded}"
+else:
+    # Connection-string mode: use DATABASE_URL directly.
+    SYNC_DATABASE_URL = DATABASE_URL
+    # Derive the async URL from the sync URL for common drivers.
+    if DATABASE_URL.startswith("mssql+pyodbc://"):
+        ASYNC_DATABASE_URL = DATABASE_URL.replace(
+            "mssql+pyodbc://", "mssql+aioodbc://", 1
+        )
+    else:
+        ASYNC_DATABASE_URL = DATABASE_URL
 
-# Configuración del engine síncrono para compatibilidad
+logger.info("Database URL configured (credentials hidden)")
+
+# ── Engines ──────────────────────────────────────────────────────
 engine = create_engine(
     SYNC_DATABASE_URL,
-    echo=True,
+    echo=False,
     pool_pre_ping=True,
-    pool_recycle=1800  # Reciclar conexiones cada 30 minutos
+    pool_recycle=1800,
 )
 
-# Configuración del engine asíncrono
 async_engine = create_async_engine(
     ASYNC_DATABASE_URL,
-    echo=True,
+    echo=False,
     pool_pre_ping=True,
-    pool_recycle=1800,  # Reciclar conexiones cada 30 minutos
+    pool_recycle=1800,
     pool_size=5,
-    max_overflow=10
+    max_overflow=10,
 )
 
-# Configuración de las sesiones
-SessionLocal = sessionmaker(
-    engine,
-    expire_on_commit=False
-)
+# ── Sessions ─────────────────────────────────────────────────────
+SessionLocal = sessionmaker(engine, expire_on_commit=False)
 
 AsyncSessionLocal = async_sessionmaker(
-    async_engine,
-    expire_on_commit=False,
-    class_=AsyncSession
+    async_engine, expire_on_commit=False, class_=AsyncSession
 )
 
-# Base para los modelos
 Base = declarative_base()
 
-# Función para verificar la conexión a la base de datos
-def verify_database_connection():
-    """Verifica la conexión a la base de datos."""
+
+# ── Connection verification ─────────────────────────────────────
+def verify_database_connection() -> bool:
+    """Verify the database connection (synchronous)."""
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-            logger.info("Conexión a la base de datos verificada con éxito")
-            return True
+        logger.info("Database connection verified successfully")
+        return True
     except Exception as e:
-        logger.error(f"Error al verificar la conexión a la base de datos: {str(e)}")
+        logger.error("Error verifying database connection: %s", e)
         return False
 
-# Función asíncrona para verificar la conexión
-async def verify_database_connection_async():
-    """Verifica la conexión a la base de datos de forma asíncrona."""
+
+async def verify_database_connection_async() -> bool:
+    """Verify the database connection (asynchronous)."""
     try:
         async with async_engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-            logger.info("Conexión a la base de datos verificada con éxito (async)")
-            return True
+        logger.info("Database connection verified successfully (async)")
+        return True
     except Exception as e:
-        logger.error(f"Error al verificar la conexión a la base de datos (async): {str(e)}")
+        logger.error("Error verifying database connection (async): %s", e)
         return False
 
-# Función para obtener una sesión síncrona
+
+# ── Session dependencies ────────────────────────────────────────
 def get_db():
-    """Genera una sesión síncrona de la base de datos."""
+    """Yield a synchronous database session."""
     session = SessionLocal()
     try:
         yield session
     finally:
         session.close()
 
-# Función para obtener una sesión asíncrona
+
 async def get_async_db():
-    """Genera una sesión asíncrona de la base de datos."""
+    """Yield an asynchronous database session."""
     async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:
             await session.close()
 
-# Función para inicializar la base de datos con operaciones asíncronas
+
+# ── Initialization ──────────────────────────────────────────────
 async def init_db():
-    """Inicializa la base de datos con datos de prueba."""
+    """
+    Create all tables and optionally seed a default admin user.
+
+    The seed admin credentials are read from environment variables:
+      SEED_ADMIN_EMAIL (default: admin@example.com)
+      SEED_ADMIN_PASSWORD (default: changeme123)
+      SEED_ADMIN_NAME (default: Administrator)
+
+    In production, set these to secure values or remove seeding entirely
+    by leaving SEED_ADMIN_EMAIL empty.
+    """
     try:
-        # Crear todas las tablas - Using synchronous engine for schema creation
-        # as it's a one-time operation and more reliable with pyodbc
         Base.metadata.create_all(bind=engine)
-        
-        # Crear una sesión para insertar datos
-        async with AsyncSessionLocal() as session:
-            from models import User, UserRole
-            from auth.auth_handler import AuthHandler
 
-            # Lista de usuarios a crear
-            usuarios = [
-                # Informático (tú)
-                {
-                    "email": "fernando.prada@svanelectro.com",
-                    "nombre_completo": "Fernando Prada",
-                    "rol": UserRole.admin,
-                    "password": "contraseña123"
-                },
-            ]
+        seed_email = os.getenv("SEED_ADMIN_EMAIL", "admin@example.com")
+        seed_password = os.getenv("SEED_ADMIN_PASSWORD", "changeme123")
+        seed_name = os.getenv("SEED_ADMIN_NAME", "Administrator")
 
-            auth_handler = AuthHandler()
+        if seed_email:
+            async with AsyncSessionLocal() as session:
+                from models import User, UserRole
+                from auth.auth_handler import AuthHandler
 
-            for usuario_data in usuarios:
-                # Verificar si el usuario ya existe
                 result = await session.execute(
                     text("SELECT 1 FROM usuarios WHERE email = :email"),
-                    {"email": usuario_data["email"]}
+                    {"email": seed_email},
                 )
                 if not result.scalar():
-                    # Crear el usuario si no existe
-                    hashed_password = auth_handler.get_password_hash(usuario_data["password"])
+                    auth_handler = AuthHandler()
+                    hashed_password = auth_handler.get_password_hash(seed_password)
                     nuevo_usuario = User(
-                        email=usuario_data["email"],
+                        email=seed_email,
                         password_hash=hashed_password,
-                        nombre_completo=usuario_data["nombre_completo"],
-                        rol=usuario_data["rol"],
-                        activo=True
+                        nombre_completo=seed_name,
+                        rol=UserRole.admin,
+                        activo=True,
                     )
                     session.add(nuevo_usuario)
-                    logger.info(f"Usuario {usuario_data['email']} creado correctamente")
+                    logger.info("Seed admin user created: %s", seed_email)
 
-            await session.commit()
-            logger.info("Base de datos inicializada correctamente")
+                await session.commit()
+                logger.info("Database initialized successfully")
     except Exception as e:
-        logger.error(f"Error al inicializar la base de datos: {str(e)}")
+        logger.error("Error initializing database: %s", e)
         raise
 
-# Función con reintentos para manejar errores transitorios de conexión
+
+# ── Retry helper ────────────────────────────────────────────────
 async def execute_with_retry(func, max_retries=3, delay=1):
-    """Ejecuta una función con reintentos en caso de error de conexión."""
+    """Execute an async function with retry on transient connection errors."""
     retries = 0
     while retries < max_retries:
         try:
@@ -200,8 +234,10 @@ async def execute_with_retry(func, max_retries=3, delay=1):
         except Exception as e:
             if "08S01" in str(e) and retries < max_retries - 1:
                 retries += 1
-                logger.warning(f"Error de conexión. Reintentando ({retries}/{max_retries})...")
+                logger.warning(
+                    "Connection error. Retrying (%d/%d)...", retries, max_retries
+                )
                 await asyncio.sleep(delay)
             else:
-                logger.error(f"Error después de {retries} intentos: {str(e)}")
+                logger.error("Error after %d attempts: %s", retries, e)
                 raise

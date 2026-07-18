@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import SolicitudesTable from '../components/SolicitudesTable';
 import { Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import { API_BASE_URL } from '../config';
 
 const MisSolicitudes = () => {
     const { user } = useAuth();
@@ -15,7 +16,7 @@ const MisSolicitudes = () => {
         const fetchSolicitudes = async () => {
             try {
                 if (user.role === 'director') {
-                    const pendientesData = await fetch(`http://localhost:8000/api/solicitudes/pendientes/director`, {
+                    const pendientesData = await fetch(`${API_BASE_URL}/api/solicitudes/pendientes/director`, {
                         headers: {
                             'Authorization': `Bearer ${localStorage.getItem('token')}`
                         }
@@ -24,7 +25,7 @@ const MisSolicitudes = () => {
                     const data = await pendientesData.json();
                     setSolicitudes(data);
                 } else {
-                    const response = await fetch(`http://localhost:8000/api/solicitudes/usuario/${encodeURIComponent(user.email)}`, {
+                    const response = await fetch(`${API_BASE_URL}/api/solicitudes/usuario/${encodeURIComponent(user.email)}`, {
                         headers: {
                             'Authorization': `Bearer ${localStorage.getItem('token')}`
                         }
