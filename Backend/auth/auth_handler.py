@@ -1,7 +1,8 @@
 # auth_handler.py
 from datetime import datetime, timedelta
 from typing import Optional
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 from passlib.context import CryptContext
 from fastapi import HTTPException
 import logging
@@ -76,7 +77,7 @@ class AuthHandler:
                 algorithms=[self.algorithm]
             )
             return payload
-        except JWTError as e:
+        except InvalidTokenError as e:
             logger.error(f"Error al decodificar token JWT: {str(e)}")
             raise HTTPException(
                 status_code=401,
