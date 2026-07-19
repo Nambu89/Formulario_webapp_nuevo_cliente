@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { API_BASE_URL } from '../config';
 
 const axiosInstance = axios.create({
-    baseURL: process.env.REACT_APP_API_URL || '',
+    baseURL: API_BASE_URL,
     // No establecer el Content-Type por defecto, dejarlo a Axios
     withCredentials: false // Mantenemos en false para evitar problemas CORS
 });

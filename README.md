@@ -59,8 +59,8 @@ y diseñada para desplegarse en **Microsoft Azure**.
 ```
 ┌─────────────────┐     HTTP/JSON      ┌──────────────────────┐
 │   React Frontend │ ◄────────────────► │   FastAPI Backend    │
-│  (Tailwind CSS)  │                    │  (uvicorn ASGI)      │
-│  Port 3000/5173  │                    │  Port 8000           │
+│ (Vite + Tailwind)│                    │  (uvicorn ASGI)      │
+│    Port 3000     │                    │  Port 8000           │
 └─────────────────┘                    └──────────┬───────────┘
                                                   │
                                        ┌──────────▼───────────┐
@@ -72,7 +72,7 @@ y diseñada para desplegarse en **Microsoft Azure**.
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18, Tailwind CSS, Radix UI, Axios |
+| Frontend | React 18, Vite 8, Tailwind CSS, Radix UI, Axios |
 | Backend | FastAPI, SQLAlchemy 2.0, Pydantic v2, python-jose (JWT) |
 | Database | Azure SQL Database (default), PostgreSQL, or SQL Server |
 | Auth | JWT tokens (local), optional Microsoft Entra ID for DB auth |
@@ -97,13 +97,13 @@ Azure architecture diagram for the repository:
 
 **English:**
 - Python 3.12+
-- Node.js 18+
+- Node.js 20.19+ or 22.12+
 - A database (Azure SQL, PostgreSQL, or local SQL Server)
 - ODBC Driver 18 for SQL Server (if using Azure SQL / SQL Server)
 
 **Español:**
 - Python 3.12+
-- Node.js 18+
+- Node.js 20.19+ or 22.12+
 - Una base de datos (Azure SQL, PostgreSQL o SQL Server local)
 - ODBC Driver 18 for SQL Server (si usas Azure SQL / SQL Server)
 
@@ -136,7 +136,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```bash
 cd ../Frontend
 cp .env.example .env
-# Edit .env — set REACT_APP_API_URL to your backend URL (default: http://localhost:8000)
+# Edit .env — set VITE_API_URL to your backend URL (default: http://localhost:8000)
 ```
 
 ### 3. Start the backend
@@ -165,6 +165,9 @@ npm start
 ```
 
 The app will open at `http://localhost:3000`.
+
+The frontend now uses `Vite`, but `npm start` is preserved as an alias for
+`npm run dev` to avoid changing the local workflow.
 
 ### 5. Seed demo data (optional)
 
@@ -239,7 +242,7 @@ All configuration is via environment variables. See `Backend/.env.example` and
 | `UVICORN_LOG_LEVEL` | Backend log level | `info` |
 | `SEED_ADMIN_EMAIL` | Optional admin bootstrap email (leave empty to disable) | *(empty)* |
 | `SEED_ADMIN_PASSWORD` | Password for the optional admin bootstrap | *(empty)* |
-| `REACT_APP_API_URL` | Backend URL for the frontend | `http://localhost:8000` |
+| `VITE_API_URL` | Backend URL for the frontend | `http://localhost:8000` |
 
 > **Logo:** Place your organization's logo as `Frontend/public/logo.png`.
 > The app references `/logo.png` in the navigation bar and login page.
