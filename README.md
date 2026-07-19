@@ -4,6 +4,10 @@ A full-stack web application for managing new customer onboarding requests with 
 multi-role approval workflow. Built with **FastAPI** (Python) + **React** (JavaScript)
 and designed for deployment on **Microsoft Azure**.
 
+## Azure MVP Architecture
+
+![Azure MVP Architecture](docs/diagrams/azure-mvp-architecture.jpg)
+
 ---
 
 ## Sistema de Alta de Nuevos Clientes y Aprobación de Solicitudes
